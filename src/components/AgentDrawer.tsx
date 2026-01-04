@@ -397,7 +397,7 @@ function CloudAgentStreamView({
 function DrawerCommitConfirmation({ agent }: { agent: Agent }) {
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
-  const timeAgo = agent.updatedAt ? formatTimeAgo(agent.updatedAt) : '';
+  const timeAgo = agent.createdAt ? formatTimeAgo(agent.createdAt) : '';
   
   return (
     <div className="px-5 py-4 border-t border-neutral-900 bg-neutral-950/50">
