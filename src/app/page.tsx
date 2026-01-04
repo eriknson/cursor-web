@@ -76,6 +76,9 @@ export default function Home() {
   // Track whether composer has input (for hiding empty state)
   const [hasComposerInput, setHasComposerInput] = useState(false);
 
+  // Trigger to restart polling in ConversationView (for follow-ups to finished agents)
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   // Load API key from localStorage on mount
   useEffect(() => {
     const storedKey = getApiKey();
@@ -320,8 +323,9 @@ export default function Home() {
         await addFollowUp(apiKey, activeAgentId, {
           prompt: { text: prompt },
         });
-        // If it works, update status to show agent is running again
+        // If it works, update status and trigger polling restart in ConversationView
         setActiveAgentStatus('RUNNING');
+        setRefreshTrigger(prev => prev + 1);
         setIsLaunching(false);
         return;
       } catch (err) {
@@ -499,6 +503,7 @@ export default function Home() {
     setActiveAgentRepo(repoName);
     // Clear conversation history when switching to a different run
     setConversationTurns([]);
+    setRefreshTrigger(0);
   };
 
   // Handle agent data change from conversation view (status, name, etc.)
@@ -608,6 +613,7 @@ export default function Home() {
     setActiveAgentStatus(null);
     setActiveAgentRepo(null);
     setConversationTurns([]);
+    setRefreshTrigger(0);
   };
 
   // Main app
@@ -625,12 +631,12 @@ export default function Home() {
       />
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile header with hamburger - pt-safe for notch/Dynamic Island */}
-        <header className="md:hidden flex items-center p-2 pt-safe">
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Mobile header with hamburger - fixed position so it doesn't scroll */}
+        <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center p-2 pt-safe pointer-events-none">
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="w-11 h-11 flex items-center justify-center text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            className="w-11 h-11 flex items-center justify-center text-white bg-black/60 backdrop-blur-xl hover:bg-black/80 rounded-xl transition-colors cursor-pointer pointer-events-auto"
             title="Menu"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -640,7 +646,7 @@ export default function Home() {
         </header>
 
         {/* Main content - conversation or empty state */}
-        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4">
+        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0">
           {activeAgentId ? (
             <ConversationView
               agentId={activeAgentId}
@@ -652,27 +658,32 @@ export default function Home() {
               sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
               preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
               previousTurns={conversationTurns}
+              refreshTrigger={refreshTrigger}
             />
           ) : (
             <EmptyState visible={!hasComposerInput} />
           )}
 
-          {/* Composer - sticky at bottom with safe area padding */}
-          <div className="mt-auto pt-4 pb-safe sticky bottom-0 bg-black">
-            <Composer
-              onSubmit={handleLaunch}
-              isLoading={isLaunching}
-              disabled={!isConversationMode && !selectedRepo}
-              placeholder="Ask, plan, build anything"
-              repos={sortedRepos}
-              selectedRepo={selectedRepo}
-              onSelectRepo={handleSelectRepo}
-              isLoadingRepos={isLoadingRepos}
-              isConversationMode={isConversationMode}
-              isAgentFinished={isAgentFinished}
-              activeRepoName={activeAgentRepo || undefined}
-              onInputChange={setHasComposerInput}
-            />
+          {/* Composer - sticky at bottom with backdrop blur so content scrolls behind */}
+          <div className="mt-auto sticky bottom-0 -mx-4 px-4">
+            {/* Gradient fade for content scrolling behind */}
+            <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-transparent to-black/70 pointer-events-none" />
+            <div className="pt-6 pb-safe bg-black/70 backdrop-blur-xl">
+              <Composer
+                onSubmit={handleLaunch}
+                isLoading={isLaunching}
+                disabled={!isConversationMode && !selectedRepo}
+                placeholder="Ask, plan, build anything"
+                repos={sortedRepos}
+                selectedRepo={selectedRepo}
+                onSelectRepo={handleSelectRepo}
+                isLoadingRepos={isLoadingRepos}
+                isConversationMode={isConversationMode}
+                isAgentFinished={isAgentFinished}
+                activeRepoName={activeAgentRepo || undefined}
+                onInputChange={setHasComposerInput}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -99,6 +99,8 @@ interface ConversationViewProps {
   preloadedData?: { agent: Agent; messages: Message[] };
   // Previous conversation turns from continuation agents
   previousTurns?: ConversationTurn[];
+  // Counter that triggers a refetch when incremented (for follow-ups to finished agents)
+  refreshTrigger?: number;
 }
 
 const INITIAL_POLL_INTERVAL = 1000;
@@ -485,6 +487,7 @@ export function ConversationView({
   sdkSteps = [],
   preloadedData,
   previousTurns = [],
+  refreshTrigger = 0,
 }: ConversationViewProps) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -677,6 +680,19 @@ export function ConversationView({
       stopPolling();
     }
   }, [isTerminal, stopPolling]);
+
+  // Restart polling when refreshTrigger changes (e.g., after follow-up to finished agent)
+  useEffect(() => {
+    if (refreshTrigger > 0 && agentId && !agentId.startsWith('sdk-') && agentId !== 'pending') {
+      // Reset rate limit state and restart polling
+      pollCountRef.current = 0;
+      rateLimitedRef.current = false;
+      // Fetch immediately then schedule next poll
+      fetchAll(false, true).then(() => {
+        scheduleNextPoll();
+      });
+    }
+  }, [refreshTrigger, agentId, fetchAll, scheduleNextPoll]);
 
   if (!agentId) {
     return null;
