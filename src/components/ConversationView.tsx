@@ -305,7 +305,7 @@ function CloudAgentView({
   const isWaitingForResponse = isActive && lastMessage?.type === 'user_message';
   
   // Get initial loading phase message (before any real messages arrive)
-  const hasAnyAgentContent = agentMessages.length > 0 || agent?.name;
+  const hasAnyAgentContent = agentMessages.length > 0 || !!agent?.name;
   const initialPhaseMessage = useInitialLoadingPhase(isActive, hasAnyAgentContent);
   
   // Get REAL status from agent data
@@ -419,7 +419,7 @@ function formatTimeAgo(dateString: string): string {
 function CommitConfirmation({ agent }: { agent: Agent }) {
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
-  const timeAgo = agent.updatedAt ? formatTimeAgo(agent.updatedAt) : '';
+  const timeAgo = agent.createdAt ? formatTimeAgo(agent.createdAt) : '';
   
   return (
     <div className="mt-4 pt-4 border-t border-neutral-800/50">

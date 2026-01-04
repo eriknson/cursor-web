@@ -545,15 +545,15 @@ export default function Home() {
 
           <div className="space-y-4">
             <div>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleValidateKey()}
-                placeholder="Enter Cursor API key"
-                className="w-full px-4 py-3 bg-transparent border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
-                autoFocus
-              />
+            <input
+              type="password"
+              value={apiKeyInput}
+              onInput={(e) => setApiKeyInput((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleValidateKey()}
+              placeholder="Enter Cursor API key"
+              className="w-full px-4 py-3 bg-transparent border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
+              autoFocus
+            />
               {authError && (
                 <p className="mt-2 text-xs text-zinc-500">{authError}</p>
               )}
