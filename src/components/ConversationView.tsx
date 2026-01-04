@@ -701,6 +701,7 @@ export function ConversationView({
   return (
     <div 
       ref={scrollRef}
+      data-scroll-container
       className="flex-1 overflow-y-auto flex flex-col overscroll-contain"
     >
       <div className="flex-1" />

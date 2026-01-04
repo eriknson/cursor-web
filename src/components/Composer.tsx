@@ -4,6 +4,80 @@ import { useState, useRef, useEffect } from 'react';
 import { CachedRepo } from '@/lib/storage';
 import { CursorLoader } from './CursorLoader';
 
+// Hook to handle iOS keyboard viewport issues
+// When the virtual keyboard opens/closes, iOS can leave the viewport in a weird state
+function useKeyboardViewportFix(textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
+  const wasKeyboardOpen = useRef(false);
+  const initialViewportHeight = useRef(0);
+  
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
+    // Check if we're on iOS/mobile Safari
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    if (!isIOS) return;
+    
+    // Store initial viewport height
+    initialViewportHeight.current = window.visualViewport?.height || window.innerHeight;
+    
+    const resetViewport = () => {
+      // Force the viewport to recalculate by scrolling
+      // This fixes the "stuck content" issue on iOS when keyboard dismisses
+      requestAnimationFrame(() => {
+        // Small delay to let the keyboard fully dismiss
+        setTimeout(() => {
+          // Scroll the window to trigger viewport recalculation
+          window.scrollTo(0, 0);
+          
+          // Find and scroll the conversation container to bottom
+          const scrollContainer = document.querySelector('[data-scroll-container]');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        }, 50);
+      });
+    };
+    
+    const handleFocus = () => {
+      wasKeyboardOpen.current = true;
+    };
+    
+    const handleBlur = () => {
+      if (!wasKeyboardOpen.current) return;
+      wasKeyboardOpen.current = false;
+      resetViewport();
+    };
+    
+    // Also listen to visualViewport resize to detect keyboard dismiss
+    const handleViewportResize = () => {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      
+      const currentHeight = vv.height;
+      const heightDiff = initialViewportHeight.current - currentHeight;
+      
+      // If viewport height increased back close to original, keyboard was dismissed
+      if (wasKeyboardOpen.current && heightDiff < 50) {
+        wasKeyboardOpen.current = false;
+        resetViewport();
+      }
+    };
+    
+    textarea.addEventListener('focus', handleFocus);
+    textarea.addEventListener('blur', handleBlur);
+    window.visualViewport?.addEventListener('resize', handleViewportResize);
+    
+    return () => {
+      textarea.removeEventListener('focus', handleFocus);
+      textarea.removeEventListener('blur', handleBlur);
+      window.visualViewport?.removeEventListener('resize', handleViewportResize);
+    };
+  }, [textareaRef]);
+}
+
 const AVAILABLE_MODELS = [
   'composer-1',
   'opus-4.5',
@@ -54,6 +128,9 @@ export function Composer({
   const [agentMode, setAgentMode] = useState<string>('cloud');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Fix iOS keyboard viewport issues
+  useKeyboardViewportFix(textareaRef);
+
   // Auto-resize textarea - grows with content, no max height
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -84,6 +161,9 @@ export function Composer({
     if (!value.trim() || isLoading || disabled) return;
     onSubmit(value.trim(), agentMode as AgentMode, selectedModel);
     setValue('');
+    
+    // Blur the textarea to dismiss keyboard and trigger viewport fix
+    textareaRef.current?.blur();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
