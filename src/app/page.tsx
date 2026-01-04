@@ -2,18 +2,21 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Composer, AgentMode } from '@/components/Composer';
-import { ActivityDrawer } from '@/components/ActivityDrawer';
-import { ConversationView } from '@/components/ConversationView';
+import { Sidebar } from '@/components/Sidebar';
+import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { CursorLoader } from '@/components/CursorLoader';
+import { EmptyState } from '@/components/EmptyState';
 import {
   validateApiKey,
   listRepositories,
   launchAgent,
+  addFollowUp,
   fetchGitHubRepoInfo,
   getAgentStatus,
   getAgentConversation,
   ApiKeyInfo,
   RateLimitError,
+  AuthError,
   Agent,
   Message,
 } from '@/lib/cursorClient';
@@ -36,6 +39,7 @@ import {
 
 export default function Home() {
   // Auth state
+  const [isInitializing, setIsInitializing] = useState(true);
   const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [userInfo, setUserInfo] = useState<ApiKeyInfo | null>(null);
@@ -51,12 +55,14 @@ export default function Home() {
   const [runs, setRuns] = useState<StoredRun[]>([]);
   const [isLaunching, setIsLaunching] = useState(false);
 
-  // Activity drawer state (right side)
-  const [isActivityOpen, setIsActivityOpen] = useState(false);
+  // Sidebar state (left side, for mobile drawer)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Active conversation state
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [activePrompt, setActivePrompt] = useState<string>('');
+  const [activeAgentStatus, setActiveAgentStatus] = useState<string | null>(null);
+  const [activeAgentRepo, setActiveAgentRepo] = useState<string | null>(null);
 
   // SDK streaming state - keyed by run ID
   const [sdkStepsMap, setSdkStepsMap] = useState<Record<string, AgentStep[]>>({});
@@ -64,23 +70,36 @@ export default function Home() {
   // Preloaded agent data cache - keyed by agent ID
   const [agentCache, setAgentCache] = useState<Record<string, { agent: Agent; messages: Message[] }>>({});
 
+  // Conversation history for continuation chains
+  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
+
+  // Track whether composer has input (for hiding empty state)
+  const [hasComposerInput, setHasComposerInput] = useState(false);
+
   // Load API key from localStorage on mount
   useEffect(() => {
     const storedKey = getApiKey();
     if (storedKey) {
       setApiKeyState(storedKey);
-      // Fetch user info to display email
+      // Fetch user info to display email (optional - don't block on this)
       validateApiKey(storedKey)
         .then(setUserInfo)
-        .catch(() => {
-          // Key is invalid, clear it
-          clearApiKey();
-          setApiKeyState(null);
+        .catch((err) => {
+          // Only clear key on actual auth failures (invalid/expired key)
+          if (err instanceof AuthError) {
+            clearApiKey();
+            setApiKeyState(null);
+          }
+          // For transient errors (network, server), keep the key and continue
+          // User can still use the app; email just won't show
+          console.warn('Validation failed (non-fatal):', err.message);
         });
     }
     // Clear runs stuck in "building" state from previous sessions
     clearStuckRuns();
     setRuns(getStoredRuns());
+    // Done checking for stored key
+    setIsInitializing(false);
   }, []);
 
   // Preload agent data for recent cloud runs
@@ -260,12 +279,139 @@ export default function Home() {
     setSelectedRepo(null);
   };
 
-  // Handle launching agent
+  // Determine if we're in conversation mode (can send messages)
+  // Available when there's an active cloud agent (running or finished)
+  const isConversationMode = Boolean(
+    activeAgentId && 
+    !activeAgentId.startsWith('sdk-') && 
+    activeAgentId !== 'pending'
+  );
+  
+  // Check if agent is still running (for UI hints)
+  const isAgentRunning = activeAgentStatus === 'RUNNING' || activeAgentStatus === 'CREATING';
+  const isAgentFinished = activeAgentStatus === 'FINISHED' || activeAgentStatus === 'STOPPED';
+
+  // Handle launching agent or sending follow-up/continuation
   const handleLaunch = async (prompt: string, mode: AgentMode, model: string) => {
-    if (!apiKey || !selectedRepo) return;
+    if (!apiKey) return;
+
+    // If in conversation mode, try follow-up first, then fall back to continuation
+    if (isConversationMode && activeAgentId) {
+      setIsLaunching(true);
+      
+      // If agent is still running, send a follow-up
+      if (isAgentRunning) {
+        try {
+          await addFollowUp(apiKey, activeAgentId, {
+            prompt: { text: prompt },
+          });
+          // The ConversationView will pick up the new message via polling
+        } catch (err) {
+          console.error('Failed to send follow-up:', err);
+          alert(err instanceof Error ? err.message : 'Failed to send follow-up');
+        } finally {
+          setIsLaunching(false);
+        }
+        return;
+      }
+      
+      // Agent is finished - try follow-up first, then fall back to launching continuation agent
+      try {
+        await addFollowUp(apiKey, activeAgentId, {
+          prompt: { text: prompt },
+        });
+        // If it works, update status to show agent is running again
+        setActiveAgentStatus('RUNNING');
+        setIsLaunching(false);
+        return;
+      } catch (err) {
+        // Follow-up to finished agent failed - launch a continuation agent
+        console.log('Follow-up to finished agent failed, launching continuation:', err);
+        // Fall through to launch a new agent as continuation
+      }
+      
+      // Launch a continuation agent on the same repo
+      const repoToUse = activeAgentRepo ? repos.find(r => r.name === activeAgentRepo) : selectedRepo;
+      if (!repoToUse) {
+        alert('Could not find repository for continuation');
+        setIsLaunching(false);
+        return;
+      }
+      
+      try {
+        // Build context from previous conversation and save current turn for display
+        const previousAgent = agentCache[activeAgentId];
+        let contextPrompt = prompt;
+        
+        // Save the current conversation as a turn for the history display
+        const currentTurn: ConversationTurn = {
+          prompt: activePrompt,
+          messages: previousAgent?.messages || [],
+          summary: previousAgent?.agent?.summary,
+        };
+        
+        if (previousAgent) {
+          const summary = previousAgent.agent?.summary;
+          
+          // Create a brief context header for the new agent
+          if (summary) {
+            contextPrompt = `[Continuing from previous work]\nPrevious task completed: ${summary}\n\nNew request: ${prompt}`;
+          }
+        }
+        
+        // Add current turn to conversation history
+        setConversationTurns(prev => [...prev, currentTurn]);
+        
+        // Set pending state to show immediate feedback
+        setActivePrompt(prompt); // Keep original prompt for display
+        setActiveAgentId('pending');
+        setActiveAgentStatus('CREATING');
+        
+        const agent = await launchAgent(apiKey, {
+          prompt: { text: contextPrompt },
+          source: { repository: repoToUse.repository },
+          target: { autoCreatePr: true },
+          model,
+        });
+
+        const newRun: StoredRun = {
+          id: agent.id,
+          prompt,
+          repository: repoToUse.repository,
+          status: agent.status,
+          createdAt: agent.createdAt,
+          agentUrl: agent.target.url,
+        };
+        addStoredRun(newRun);
+        setRuns([newRun, ...runs.filter((r) => r.id !== agent.id)]);
+        setActiveAgentId(agent.id);
+      } catch (err) {
+        console.error('Failed to launch continuation agent:', err);
+        alert(err instanceof Error ? err.message : 'Failed to continue');
+        // Remove the turn we just added since the continuation failed
+        setConversationTurns(prev => prev.slice(0, -1));
+        setActiveAgentId(null);
+        setActivePrompt('');
+      } finally {
+        setIsLaunching(false);
+      }
+      return;
+    }
+
+    // Otherwise, launch a new agent (fresh conversation)
+    if (!selectedRepo) return;
 
     setIsLaunching(true);
     setActivePrompt(prompt);
+    setActiveAgentRepo(selectedRepo.name);
+    
+    // Clear any previous conversation history since this is a fresh start
+    setConversationTurns([]);
+    
+    // Show the prompt immediately by setting a pending agent ID
+    // This lets the conversation view render right away
+    setActiveAgentId('pending');
+    setActiveAgentStatus('CREATING');
 
     if (mode === 'sdk') {
       // SDK mode - use @cursor-ai/january package
@@ -304,6 +450,9 @@ export default function Home() {
       } catch (err) {
         console.error('SDK agent failed:', err);
         alert(err instanceof Error ? err.message : 'SDK agent failed');
+        // Reset to null on error so user can try again
+        setActiveAgentId(null);
+        setActivePrompt('');
       } finally {
         setIsLaunching(false);
       }
@@ -331,6 +480,9 @@ export default function Home() {
       } catch (err) {
         console.error('Failed to launch agent:', err);
         alert(err instanceof Error ? err.message : 'Failed to launch agent');
+        // Reset to null on error so user can try again
+        setActiveAgentId(null);
+        setActivePrompt('');
       } finally {
         setIsLaunching(false);
       }
@@ -341,6 +493,12 @@ export default function Home() {
   const handleSelectRun = (run: StoredRun) => {
     setActiveAgentId(run.id);
     setActivePrompt(run.prompt);
+    setActiveAgentStatus(run.status);
+    // Extract repo name from repository URL
+    const repoName = run.repository.split('/').pop() || run.repository;
+    setActiveAgentRepo(repoName);
+    // Clear conversation history when switching to a different run
+    setConversationTurns([]);
   };
 
   // Handle agent data change from conversation view (status, name, etc.)
@@ -361,15 +519,21 @@ export default function Home() {
 
   // Legacy handler for backwards compatibility
   const handleStatusChange = (status: string) => {
+    setActiveAgentStatus(status);
     if (activeAgentId) {
       handleAgentUpdate(activeAgentId, { status });
     }
   };
 
+  // Show nothing while checking for stored API key to prevent flash
+  if (isInitializing) {
+    return <div className="min-h-dvh bg-black" />;
+  }
+
   // API Key entry screen
   if (!apiKey) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+      <div className="min-h-dvh bg-black flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-sm space-y-8">
           <div className="text-center">
             <img
@@ -398,7 +562,7 @@ export default function Home() {
             <button
               onClick={handleValidateKey}
               disabled={!apiKeyInput.trim() || isValidating}
-              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-zinc-200 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 bg-white hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer rounded-xl text-zinc-900 text-sm font-medium transition-colors flex items-center justify-center gap-2"
             >
               {isValidating ? (
                 <>
@@ -410,7 +574,7 @@ export default function Home() {
               )}
             </button>
 
-            <p className="text-center text-xs text-zinc-700">
+            <p className="text-center text-[13px] text-zinc-700">
               Get your API key from{' '}
               <a
                 href="https://cursor.com/dashboard"
@@ -420,7 +584,16 @@ export default function Home() {
               >
                 cursor.com/dashboard
               </a>
-              . Your key is stored only in your browser and never saved on our servers.
+              . Your key is stored in your browser and{' '}
+              <a
+                href="https://github.com/eriknson/cursor-web/blob/main/src/lib/storage.ts#L32-L45"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-500 hover:text-zinc-400"
+              >
+                never saved on our servers
+              </a>
+              .
             </p>
           </div>
         </div>
@@ -428,74 +601,80 @@ export default function Home() {
     );
   }
 
+  // Handle new agent action
+  const handleNewAgent = () => {
+    setActiveAgentId(null);
+    setActivePrompt('');
+    setActiveAgentStatus(null);
+    setActiveAgentRepo(null);
+    setConversationTurns([]);
+  };
+
   // Main app
   return (
-    <div className="min-h-screen bg-black flex flex-col">
-      <div className="max-w-2xl mx-auto px-4 w-full flex flex-col flex-1">
-        {/* Header */}
-        <header className="flex items-center justify-between py-4">
-          <img
-            src="/cursor-logo.svg"
-            alt="Cursor"
-            className="h-5"
-          />
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleLogout}
-              className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-            >
-              {userInfo?.userEmail || 'Sign out'}
-            </button>
-            {/* Activity list button */}
-            <button
-              onClick={() => setIsActivityOpen(true)}
-              className="p-2 text-zinc-600 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-              title="Activity"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
-            </button>
-          </div>
+    <div className="min-h-dvh bg-black flex">
+      {/* Left sidebar */}
+      <Sidebar
+        runs={runs}
+        onSelectRun={handleSelectRun}
+        onNewAgent={handleNewAgent}
+        onLogout={handleLogout}
+        userEmail={userInfo?.userEmail}
+        isOpen={isSidebarOpen}
+        onOpenChange={setIsSidebarOpen}
+      />
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile header with hamburger */}
+        <header className="md:hidden flex items-center p-2">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="w-11 h-11 flex items-center justify-center text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+            title="Menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h12M4 14h8" />
+            </svg>
+          </button>
         </header>
 
         {/* Main content - conversation or empty state */}
-        {activeAgentId ? (
-          <ConversationView
-            agentId={activeAgentId}
-            apiKey={apiKey}
-            prompt={activePrompt}
-            onStatusChange={handleStatusChange}
-            onAgentUpdate={handleAgentUpdate}
-            isSdkMode={activeAgentId.startsWith('sdk-')}
-            sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
-            preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
-          />
-        ) : (
-          <div className="flex-1" />
-        )}
+        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4">
+          {activeAgentId ? (
+            <ConversationView
+              agentId={activeAgentId}
+              apiKey={apiKey}
+              prompt={activePrompt}
+              onStatusChange={handleStatusChange}
+              onAgentUpdate={handleAgentUpdate}
+              isSdkMode={activeAgentId.startsWith('sdk-')}
+              sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
+              preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
+              previousTurns={conversationTurns}
+            />
+          ) : (
+            <EmptyState visible={!hasComposerInput} />
+          )}
 
-        {/* Composer - sticky at bottom with safe area padding */}
-        <div className="mt-auto pt-4 pb-safe sticky bottom-0 bg-black">
-          <Composer
-            onSubmit={handleLaunch}
-            isLoading={isLaunching}
-            disabled={!selectedRepo}
-            placeholder="Ask, plan, build anything"
-            repos={sortedRepos}
-            selectedRepo={selectedRepo}
-            onSelectRepo={handleSelectRepo}
-            isLoadingRepos={isLoadingRepos}
-          />
+          {/* Composer - sticky at bottom with safe area padding */}
+          <div className="mt-auto pt-4 pb-safe sticky bottom-0 bg-black">
+            <Composer
+              onSubmit={handleLaunch}
+              isLoading={isLaunching}
+              disabled={!isConversationMode && !selectedRepo}
+              placeholder="Ask, plan, build anything"
+              repos={sortedRepos}
+              selectedRepo={selectedRepo}
+              onSelectRepo={handleSelectRepo}
+              isLoadingRepos={isLoadingRepos}
+              isConversationMode={isConversationMode}
+              isAgentFinished={isAgentFinished}
+              activeRepoName={activeAgentRepo || undefined}
+              onInputChange={setHasComposerInput}
+            />
+          </div>
         </div>
-
-        {/* Activity drawer (right side) */}
-        <ActivityDrawer
-          isOpen={isActivityOpen}
-          onOpenChange={setIsActivityOpen}
-          runs={runs}
-          onSelectRun={handleSelectRun}
-        />
       </div>
     </div>
   );

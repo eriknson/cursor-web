@@ -1,0 +1,18 @@
+{
+  "name": "Cursor Cloud Agents",
+  "short_name": "Cursor",
+  "description": "Web interface for Cursor Cloud Agents - build, fix bugs, explore",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/cursor-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

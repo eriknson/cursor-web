@@ -58,7 +58,7 @@ export function RunList({ runs, onSelect }: RunListProps) {
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <span className="text-zinc-200 text-sm truncate block">
+                <span className="text-zinc-200 text-[16px] md:text-[15px] truncate block">
                   {run.agentName || (run.prompt.length > 50 ? run.prompt.slice(0, 50) + '...' : run.prompt)}
                 </span>
                 <div className="flex items-center gap-2 mt-1 text-xs text-zinc-600">

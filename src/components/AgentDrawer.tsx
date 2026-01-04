@@ -2,9 +2,75 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Drawer } from 'vaul';
-import { Agent, Message, getAgentStatus, getAgentConversation, addFollowUp, stopAgent } from '@/lib/cursorClient';
+import { Agent, Message, getAgentStatus, getAgentConversation, addFollowUp, stopAgent, getGitHubBranchCommitsUrl } from '@/lib/cursorClient';
 import { AgentStep } from '@/lib/cursorSdk';
-import { CursorLoader } from './CursorLoader';
+
+// Initial loading phases shown before first real message arrives
+const INITIAL_PHASES = [
+  { message: 'Initializing agent', duration: 2000 },
+  { message: 'Thinking', duration: 3000 },
+  { message: 'Planning next moves', duration: Infinity }, // Show until real data arrives
+];
+
+// Hook to track initial loading phase before agent has real messages
+function useInitialLoadingPhase(isActive: boolean, hasMessages: boolean): string | null {
+  const [phase, setPhase] = useState(0);
+  const startTimeRef = useRef<number>(Date.now());
+  
+  useEffect(() => {
+    if (!isActive || hasMessages) {
+      // Reset when inactive or when we have messages
+      setPhase(0);
+      startTimeRef.current = Date.now();
+      return;
+    }
+    
+    // Progress through phases based on time
+    const timers: NodeJS.Timeout[] = [];
+    
+    // Set first phase after short delay
+    timers.push(setTimeout(() => setPhase(1), INITIAL_PHASES[0].duration));
+    timers.push(setTimeout(() => setPhase(2), INITIAL_PHASES[0].duration + INITIAL_PHASES[1].duration));
+    
+    return () => timers.forEach(clearTimeout);
+  }, [isActive, hasMessages]);
+  
+  if (!isActive || hasMessages) return null;
+  return INITIAL_PHASES[phase]?.message || 'Initializing agent';
+}
+
+// Get a status message based on REAL agent data - no fake timers
+function getAgentStatusMessage(agent: Agent | null): string {
+  if (!agent) return 'Connecting';
+  
+  // Show the agent's actual name if available - this is what it's working on
+  if (agent.name) {
+    switch (agent.status) {
+      case 'CREATING':
+        return `Setting up: ${agent.name}`;
+      case 'RUNNING':
+        return agent.name;
+      default:
+        return agent.name;
+    }
+  }
+  
+  // Fallback to status-based message
+  switch (agent.status) {
+    case 'CREATING':
+      return 'Setting up workspace';
+    case 'RUNNING':
+      return 'Working';
+    case 'FINISHED':
+      return 'Complete';
+    case 'STOPPED':
+      return 'Stopped';
+    case 'ERROR':
+      return 'Error occurred';
+    default:
+      return 'Processing';
+  }
+}
 
 interface AgentDrawerProps {
   isOpen: boolean;
@@ -108,6 +174,12 @@ function SdkStepsView({
 }) {
   const mergedSteps = mergeTextSteps(steps);
   const isActive = steps.length > 0 && steps[steps.length - 1]?.type !== 'done';
+  
+  // Get last meaningful step for real-time status (SDK provides streaming updates)
+  const lastStep = steps[steps.length - 1];
+  const statusMessage = lastStep?.type === 'tool_start' 
+    ? lastStep.content 
+    : 'Working';
 
   // Auto-scroll when new steps arrive
   useEffect(() => {
@@ -117,25 +189,24 @@ function SdkStepsView({
   if (steps.length === 0) {
     return (
       <div className="px-5 py-4">
-        <div className="flex items-center gap-2 text-neutral-500">
-          <CursorLoader size="sm" />
-          <span>Starting SDK agent...</span>
+        <div className="shimmer-text text-[16px] md:text-[15px]">
+          Starting
         </div>
       </div>
     );
   }
 
   return (
-    <div className="text-sm">
+    <div className="text-[16px] md:text-[15px]">
       <div className="px-5 py-4 space-y-2">
         {mergedSteps.map((step, idx) => (
           <StepItem key={idx} step={step} />
         ))}
         
-        {/* Active indicator */}
+        {/* Active indicator - shows real status from last step */}
         {isActive && (
-          <div className="flex items-center gap-2 text-neutral-500 pt-1">
-            <CursorLoader size="sm" />
+          <div className="shimmer-text text-[14px] md:text-[13px] pt-2">
+            {statusMessage}
           </div>
         )}
         
@@ -219,14 +290,29 @@ function CloudAgentStreamView({
 }) {
   const agentMessages = messages.filter(m => m.type === 'assistant_message');
   const userMessage = messages.find(m => m.type === 'user_message');
+  
+  // Get initial loading phase message (before any real messages arrive)
+  const hasAnyAgentContent = agentMessages.length > 0 || agent?.name;
+  const initialPhaseMessage = useInitialLoadingPhase(isActive, hasAnyAgentContent);
+  
+  // Get REAL status from agent data
+  const realStatusMessage = getAgentStatusMessage(agent);
+  
+  // Use initial phase message when we have no real content, otherwise use real status
+  const statusMessage = !hasAnyAgentContent && initialPhaseMessage 
+    ? initialPhaseMessage 
+    : realStatusMessage;
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, messagesEndRef]);
 
+  // Always show shimmer on something when active
+  const needsShimmerIndicator = isActive && agentMessages.length > 0;
+
   return (
-    <div className="text-sm">
+    <div className="text-[16px] md:text-[15px]">
       <div className="px-5 py-4 space-y-3">
         {/* User message - contained */}
         {userMessage && (
@@ -239,11 +325,10 @@ function CloudAgentStreamView({
 
         {/* Agent response section */}
         <div className="space-y-1.5">
-          {/* Planning state - shimmer effect */}
+          {/* Status indicator - shows initial phases then real agent status/name */}
           {agentMessages.length === 0 && isActive && (
-            <div className="flex items-center gap-3">
-              <div className="w-1 h-5 bg-white/60 rounded-sm animate-pulse" />
-              <span className="shimmer-text">Planning next moves...</span>
+            <div className="shimmer-text text-[16px] md:text-[15px]">
+              {statusMessage}
             </div>
           )}
 
@@ -257,29 +342,25 @@ function CloudAgentStreamView({
                 key={msg.id} 
                 className={`relative leading-relaxed whitespace-pre-wrap transition-colors ${
                   isActiveMessage 
-                    ? 'text-white pl-3 border-l-2 border-white/40' 
+                    ? 'text-white shimmer-active' 
                     : 'text-neutral-500'
                 }`}
               >
                 {renderWithCodeTags(msg.text)}
-                {isActiveMessage && (
-                  <span className="inline-block w-1 h-4 ml-1 bg-white/60 rounded-sm animate-pulse align-middle" />
-                )}
               </div>
             );
           })}
 
-          {/* Thinking indicator - shimmer effect */}
-          {agentMessages.length > 0 && isActive && (
-            <div className="flex items-center gap-3 pt-1">
-              <div className="w-1 h-4 bg-white/40 rounded-sm animate-pulse" />
-              <span className="shimmer-text text-sm">Thinking...</span>
+          {/* Status indicator - shows REAL agent status when active with messages */}
+          {needsShimmerIndicator && (
+            <div className="shimmer-text text-[14px] md:text-[13px] pt-2">
+              {statusMessage}
             </div>
           )}
 
-          {/* Summary */}
+          {/* Summary - shown in default text color when complete */}
           {agent?.summary && !isActive && (
-            <div className="text-neutral-400 leading-relaxed pt-2">
+            <div className="text-white leading-relaxed pt-2">
               {renderWithCodeTags(agent.summary)}
             </div>
           )}
@@ -288,8 +369,13 @@ function CloudAgentStreamView({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Metadata row */}
-      {agent && (
+      {/* Commit confirmation - show when finished successfully */}
+      {agent && agent.status === 'FINISHED' && (
+        <DrawerCommitConfirmation agent={agent} />
+      )}
+
+      {/* Metadata row for non-finished states */}
+      {agent && agent.status !== 'FINISHED' && (
         <div className="px-5 py-3 border-t border-neutral-900 flex items-center gap-3 text-xs text-neutral-600">
           <span className="text-neutral-500">{agent.target.branchName}</span>
           <span className="text-neutral-700">·</span>
@@ -301,21 +387,56 @@ function CloudAgentStreamView({
           >
             Open in Cursor
           </a>
-          {agent.target.prUrl && (
-            <>
-              <span className="text-neutral-700">·</span>
-              <a
-                href={agent.target.prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors"
-              >
-                View PR
-              </a>
-            </>
-          )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Commit confirmation component for the drawer
+function DrawerCommitConfirmation({ agent }: { agent: Agent }) {
+  // Construct GitHub URL for viewing the commit
+  const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
+  const timeAgo = agent.updatedAt ? formatTimeAgo(agent.updatedAt) : '';
+  
+  return (
+    <div className="px-5 py-4 border-t border-neutral-900 bg-neutral-950/50">
+      <div className="flex items-center gap-3 text-xs">
+        {/* PR link - show if available */}
+        {agent.target.prUrl && (
+          <a
+            href={agent.target.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 text-neutral-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/>
+            </svg>
+            View Pull Request
+          </a>
+        )}
+        
+        {/* View Commit button */}
+        {githubCommitsUrl && (
+          <a
+            href={githubCommitsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 text-neutral-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/>
+            </svg>
+            View Commit
+          </a>
+        )}
+        
+        {/* Time ago - muted text */}
+        {timeAgo && (
+          <span className="text-neutral-500">{timeAgo}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -410,19 +531,31 @@ export function AgentDrawer({
     }
     
     pollingRef.current = setTimeout(async () => {
-      if (!currentAgentIdRef.current) return;
+      const agentIdToCheck = currentAgentIdRef.current;
+      if (!agentIdToCheck) return;
       
       pollCountRef.current++;
       await fetchAll();
       
-      const currentAgent = await getAgentStatus(apiKey, currentAgentIdRef.current!).catch(() => null);
+      const currentAgent = await getAgentStatus(apiKey, agentIdToCheck).catch(() => null);
       const terminal = currentAgent?.status === 'FINISHED' || 
                       currentAgent?.status === 'ERROR' || 
                       currentAgent?.status === 'STOPPED';
       
-      if (!terminal) {
-        scheduleNextPoll();
+      if (terminal) {
+        // Give server a moment to finalize, then fetch final state
+        await new Promise(r => setTimeout(r, 500));
+        await fetchAll();
+        // Do one more fetch after a bit longer to catch any delayed updates like summary
+        setTimeout(async () => {
+          if (currentAgentIdRef.current === agentIdToCheck) {
+            await fetchAll();
+          }
+        }, 1500);
+        return;
       }
+      
+      scheduleNextPoll();
     }, interval);
   }, [fetchAll, apiKey]);
 
@@ -575,7 +708,7 @@ export function AgentDrawer({
               /* SDK Mode - show streaming steps with real-time updates */
               <SdkStepsView steps={sdkSteps} messagesEndRef={messagesEndRef} />
             ) : error ? (
-              <div className="px-5 py-6 text-sm text-neutral-500">
+              <div className="px-5 py-6 text-[16px] md:text-[15px] text-neutral-500">
                 {error}
               </div>
             ) : isLoading ? (
@@ -620,12 +753,12 @@ export function AgentDrawer({
                   onChange={(e) => setFollowUp(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendFollowUp()}
                   placeholder="Follow up..."
-                  className="flex-1 px-3 py-2 bg-white/[0.03] rounded-lg text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:bg-white/[0.05] transition-colors"
+                  className="flex-1 px-3 py-2 bg-white/[0.03] rounded-lg text-[16px] md:text-[15px] text-white placeholder:text-neutral-700 focus:outline-none focus:bg-white/[0.05] transition-colors"
                 />
                 <button
                   onClick={handleSendFollowUp}
                   disabled={!followUp.trim() || isSendingFollowUp}
-                  className="px-4 py-2 bg-white text-black text-sm font-medium rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-white text-black text-[16px] md:text-[15px] font-medium rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {isSendingFollowUp ? '...' : 'Send'}
                 </button>

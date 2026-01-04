@@ -65,9 +65,36 @@ export interface Agent {
     autoCreatePr: boolean;
     openAsCursorGithubApp: boolean;
     skipReviewerRequest: boolean;
+    // Additional commit info that the API may return
+    commitSha?: string;
+    commitUrl?: string;
   };
   summary?: string;
   createdAt: string;
+}
+
+// Helper to construct GitHub URLs from repository string
+export function parseRepository(repository: string): { owner: string; repo: string } | null {
+  // Repository format is typically "owner/repo"
+  const parts = repository.split('/');
+  if (parts.length >= 2) {
+    return { owner: parts[0], repo: parts[1] };
+  }
+  return null;
+}
+
+// Construct GitHub commit URL for a branch (shows recent commits)
+export function getGitHubBranchCommitsUrl(repository: string, branchName: string): string | null {
+  const parsed = parseRepository(repository);
+  if (!parsed) return null;
+  return `https://github.com/${parsed.owner}/${parsed.repo}/commits/${branchName}`;
+}
+
+// Construct GitHub compare URL to see what changed
+export function getGitHubCompareUrl(repository: string, baseRef: string, branchName: string): string | null {
+  const parsed = parseRepository(repository);
+  if (!parsed) return null;
+  return `https://github.com/${parsed.owner}/${parsed.repo}/compare/${baseRef}...${branchName}`;
 }
 
 export interface Message {
@@ -113,7 +140,12 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyInfo> {
   });
   
   if (!res.ok) {
-    throw new Error(`Invalid API key: ${res.status}`);
+    // Only throw AuthError for actual authentication failures
+    if (res.status === 401 || res.status === 403) {
+      throw new AuthError(`Invalid API key: ${res.status}`);
+    }
+    // Other errors (500, 429, etc.) are transient - throw generic error
+    throw new Error(`Validation failed: ${res.status}`);
   }
   
   return res.json();
@@ -123,6 +155,13 @@ export class RateLimitError extends Error {
   constructor(message = 'Rate limited - please wait') {
     super(message);
     this.name = 'RateLimitError';
+  }
+}
+
+export class AuthError extends Error {
+  constructor(message = 'Invalid or expired API key') {
+    super(message);
+    this.name = 'AuthError';
   }
 }
 
