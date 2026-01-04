@@ -292,7 +292,7 @@ function CloudAgentStreamView({
   const userMessage = messages.find(m => m.type === 'user_message');
   
   // Get initial loading phase message (before any real messages arrive)
-  const hasAnyAgentContent = agentMessages.length > 0 || agent?.name;
+  const hasAnyAgentContent = agentMessages.length > 0 || !!agent?.name;
   const initialPhaseMessage = useInitialLoadingPhase(isActive, hasAnyAgentContent);
   
   // Get REAL status from agent data
