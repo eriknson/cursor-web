@@ -1,65 +1,502 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Composer, AgentMode } from '@/components/Composer';
+import { ActivityDrawer } from '@/components/ActivityDrawer';
+import { ConversationView } from '@/components/ConversationView';
+import { CursorLoader } from '@/components/CursorLoader';
+import {
+  validateApiKey,
+  listRepositories,
+  launchAgent,
+  fetchGitHubRepoInfo,
+  getAgentStatus,
+  getAgentConversation,
+  ApiKeyInfo,
+  RateLimitError,
+  Agent,
+  Message,
+} from '@/lib/cursorClient';
+import { streamSdkAgent, AgentStep } from '@/lib/cursorSdk';
+import {
+  getApiKey,
+  setApiKey,
+  clearApiKey,
+  getCachedRepos,
+  setCachedRepos,
+  getStoredRuns,
+  addStoredRun,
+  updateStoredRun,
+  clearStuckRuns,
+  getLastSelectedRepo,
+  setLastSelectedRepo,
+  CachedRepo,
+  StoredRun,
+} from '@/lib/storage';
 
 export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+  // Auth state
+  const [apiKey, setApiKeyState] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [userInfo, setUserInfo] = useState<ApiKeyInfo | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Repo state
+  const [repos, setRepos] = useState<CachedRepo[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState<CachedRepo | null>(null);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+
+  // Runs state
+  const [runs, setRuns] = useState<StoredRun[]>([]);
+  const [isLaunching, setIsLaunching] = useState(false);
+
+  // Activity drawer state (right side)
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+
+  // Active conversation state
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [activePrompt, setActivePrompt] = useState<string>('');
+
+  // SDK streaming state - keyed by run ID
+  const [sdkStepsMap, setSdkStepsMap] = useState<Record<string, AgentStep[]>>({});
+
+  // Preloaded agent data cache - keyed by agent ID
+  const [agentCache, setAgentCache] = useState<Record<string, { agent: Agent; messages: Message[] }>>({});
+
+  // Load API key from localStorage on mount
+  useEffect(() => {
+    const storedKey = getApiKey();
+    if (storedKey) {
+      setApiKeyState(storedKey);
+      // Fetch user info to display email
+      validateApiKey(storedKey)
+        .then(setUserInfo)
+        .catch(() => {
+          // Key is invalid, clear it
+          clearApiKey();
+          setApiKeyState(null);
+        });
+    }
+    // Clear runs stuck in "building" state from previous sessions
+    clearStuckRuns();
+    setRuns(getStoredRuns());
+  }, []);
+
+  // Preload agent data for recent cloud runs
+  useEffect(() => {
+    if (!apiKey || runs.length === 0) return;
+
+    // Only preload cloud agents (not SDK agents)
+    const cloudRuns = runs.filter((r) => !r.id.startsWith('sdk-'));
+    // Preload first 5 recent runs
+    const toPreload = cloudRuns.slice(0, 5);
+
+    const preloadAgent = async (runId: string) => {
+      try {
+        const [agent, conversation] = await Promise.all([
+          getAgentStatus(apiKey, runId),
+          getAgentConversation(apiKey, runId),
+        ]);
+
+        setAgentCache((prev) => {
+          // Skip if already cached (check inside setter to avoid race)
+          if (prev[runId]) return prev;
+          return {
+            ...prev,
+            [runId]: { agent, messages: conversation.messages || [] },
+          };
+        });
+      } catch {
+        // Silently fail preloading - conversation will fetch on open
+      }
+    };
+
+    // Stagger preloads to avoid rate limits
+    toPreload.forEach((run, idx) => {
+      setTimeout(() => {
+        // Check cache before making request
+        setAgentCache((prev) => {
+          if (!prev[run.id]) {
+            preloadAgent(run.id);
+          }
+          return prev;
+        });
+      }, idx * 500);
+    });
+  }, [apiKey, runs]);
+
+  // Sort repos by most recent push (from GitHub)
+  const sortedRepos = useMemo(() => {
+    return [...repos].sort((a, b) => {
+      const aTime = a.pushedAt ? new Date(a.pushedAt).getTime() : 0;
+      const bTime = b.pushedAt ? new Date(b.pushedAt).getTime() : 0;
+      
+      if (aTime !== bTime) {
+        return bTime - aTime; // Most recently pushed first
+      }
+      
+      return a.name.localeCompare(b.name);
+    });
+  }, [repos]);
+
+  // Auto-select default repo when repos are loaded
+  useEffect(() => {
+    if (sortedRepos.length > 0 && !selectedRepo) {
+      // Try to use last selected repo
+      const lastSelected = getLastSelectedRepo();
+      if (lastSelected) {
+        const lastRepo = sortedRepos.find((r) => r.repository === lastSelected);
+        if (lastRepo) {
+          setSelectedRepo(lastRepo);
+          return;
+        }
+      }
+      // Fall back to most recently pushed (first in sorted list)
+      setSelectedRepo(sortedRepos[0]);
+    }
+  }, [sortedRepos, selectedRepo]);
+
+  // Fetch repos when API key is available
+  const fetchRepos = useCallback(async (key: string) => {
+    const cached = getCachedRepos();
+    if (cached && cached.length > 0) {
+      setRepos(cached);
+      return;
+    }
+
+    setIsLoadingRepos(true);
+    try {
+      const repoList = await listRepositories(key);
+      
+      // Fetch pushedAt from GitHub in batches to avoid rate limits
+      // GitHub allows 60 requests/hour for unauthenticated users
+      const BATCH_SIZE = 10;
+      const mappedRepos: CachedRepo[] = [];
+      
+      for (let i = 0; i < repoList.length; i += BATCH_SIZE) {
+        const batch = repoList.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (r) => {
+            const githubInfo = await fetchGitHubRepoInfo(r.owner, r.name);
+            return {
+              owner: r.owner,
+              name: r.name,
+              repository: r.repository,
+              pushedAt: githubInfo?.pushedAt,
+            };
+          })
+        );
+        mappedRepos.push(...batchResults);
+        
+        // Small delay between batches to be nice to the API
+        if (i + BATCH_SIZE < repoList.length) {
+          await new Promise(r => setTimeout(r, 100));
+        }
+      }
+      
+      setRepos(mappedRepos);
+      setCachedRepos(mappedRepos);
+    } catch (err) {
+      console.error('Failed to fetch repos:', err);
+      // On rate limit, try stale cache (ignore expiry)
+      if (err instanceof RateLimitError) {
+        const staleCache = getCachedRepos(true);
+        if (staleCache && staleCache.length > 0) {
+          console.warn('Rate limited, using stale cache');
+          setRepos(staleCache);
+          return;
+        }
+      }
+      // Fall back to cached data on other errors
+      if (cached && cached.length > 0) {
+        setRepos(cached);
+      }
+    } finally {
+      setIsLoadingRepos(false);
+    }
+  }, []);
+
+  // Validate and store API key
+  const handleValidateKey = async () => {
+    if (!apiKeyInput.trim()) return;
+
+    setIsValidating(true);
+    setAuthError(null);
+
+    try {
+      const info = await validateApiKey(apiKeyInput.trim());
+      setUserInfo(info);
+      setApiKey(apiKeyInput.trim());
+      setApiKeyState(apiKeyInput.trim());
+      setApiKeyInput('');
+      fetchRepos(apiKeyInput.trim());
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Invalid API key');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Fetch repos when API key changes
+  useEffect(() => {
+    if (apiKey) {
+      fetchRepos(apiKey);
+    }
+  }, [apiKey, fetchRepos]);
+
+  // Handle repo selection with persistence
+  const handleSelectRepo = (repo: CachedRepo) => {
+    setSelectedRepo(repo);
+    setLastSelectedRepo(repo.repository);
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    clearApiKey();
+    setApiKeyState(null);
+    setUserInfo(null);
+    setRepos([]);
+    setSelectedRepo(null);
+  };
+
+  // Handle launching agent
+  const handleLaunch = async (prompt: string, mode: AgentMode, model: string) => {
+    if (!apiKey || !selectedRepo) return;
+
+    setIsLaunching(true);
+    setActivePrompt(prompt);
+
+    if (mode === 'sdk') {
+      // SDK mode - use @cursor-ai/january package
+      try {
+        // Create a temporary run for the SDK session
+        const tempRunId = `sdk-${Date.now()}`;
+        const newRun: StoredRun = {
+          id: tempRunId,
+          prompt,
+          repository: selectedRepo.repository,
+          status: 'RUNNING',
+          createdAt: new Date().toISOString(),
+        };
+        addStoredRun(newRun);
+        setRuns([newRun, ...runs.filter((r) => r.id !== tempRunId)]);
+        setActiveAgentId(tempRunId);
+        setSdkStepsMap((prev) => ({ ...prev, [tempRunId]: [] }));
+
+        // Stream the response from the SDK via our API route
+        for await (const step of streamSdkAgent({
+          apiKey,
+          model,
+          repository: selectedRepo.repository,
+        }, prompt)) {
+          setSdkStepsMap((prev) => ({
+            ...prev,
+            [tempRunId]: [...(prev[tempRunId] || []), step],
+          }));
+        }
+
+        // Mark as finished
+        updateStoredRun(tempRunId, { status: 'FINISHED' });
+        setRuns((prev) =>
+          prev.map((r) => (r.id === tempRunId ? { ...r, status: 'FINISHED' } : r))
+        );
+      } catch (err) {
+        console.error('SDK agent failed:', err);
+        alert(err instanceof Error ? err.message : 'SDK agent failed');
+      } finally {
+        setIsLaunching(false);
+      }
+    } else {
+      // Cloud mode - use REST API
+      try {
+        const agent = await launchAgent(apiKey, {
+          prompt: { text: prompt },
+          source: { repository: selectedRepo.repository },
+          target: { autoCreatePr: true },
+          model,
+        });
+
+        const newRun: StoredRun = {
+          id: agent.id,
+          prompt,
+          repository: selectedRepo.repository,
+          status: agent.status,
+          createdAt: agent.createdAt,
+          agentUrl: agent.target.url,
+        };
+        addStoredRun(newRun);
+        setRuns([newRun, ...runs.filter((r) => r.id !== agent.id)]);
+        setActiveAgentId(agent.id);
+      } catch (err) {
+        console.error('Failed to launch agent:', err);
+        alert(err instanceof Error ? err.message : 'Failed to launch agent');
+      } finally {
+        setIsLaunching(false);
+      }
+    }
+  };
+
+  // Handle selecting a previous run from activity drawer
+  const handleSelectRun = (run: StoredRun) => {
+    setActiveAgentId(run.id);
+    setActivePrompt(run.prompt);
+  };
+
+  // Handle agent data change from conversation view (status, name, etc.)
+  const handleAgentUpdate = (agentId: string, updates: { status?: string; name?: string }) => {
+    const updatesToApply: Partial<StoredRun> = {};
+    if (updates.status) updatesToApply.status = updates.status;
+    if (updates.name) updatesToApply.agentName = updates.name;
+    
+    if (Object.keys(updatesToApply).length > 0) {
+      updateStoredRun(agentId, updatesToApply);
+      setRuns(
+        runs.map((r) =>
+          r.id === agentId ? { ...r, ...updatesToApply } : r
+        )
+      );
+    }
+  };
+
+  // Legacy handler for backwards compatibility
+  const handleStatusChange = (status: string) => {
+    if (activeAgentId) {
+      handleAgentUpdate(activeAgentId, { status });
+    }
+  };
+
+  // API Key entry screen
+  if (!apiKey) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-sm space-y-8">
+          <div className="text-center">
+            <img
+              src="/cursor-logo.svg"
+              alt="Cursor"
+              className="h-10 mx-auto"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleValidateKey()}
+                placeholder="Enter Cursor API key"
+                className="w-full px-4 py-3 bg-transparent border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
+                autoFocus
+              />
+              {authError && (
+                <p className="mt-2 text-xs text-zinc-500">{authError}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleValidateKey}
+              disabled={!apiKeyInput.trim() || isValidating}
+              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-zinc-200 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {isValidating ? (
+                <>
+                  <CursorLoader size="sm" />
+                  <span>Connecting</span>
+                </>
+              ) : (
+                'Continue'
+              )}
+            </button>
+
+            <p className="text-center text-xs text-zinc-700">
+              Get your API key from{' '}
+              <a
+                href="https://cursor.com/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-500 hover:text-zinc-400"
+              >
+                cursor.com/dashboard
+              </a>
+              . Your key is stored only in your browser and never saved on our servers.
+            </p>
+          </div>
         </div>
-      </main>
+      </div>
+    );
+  }
+
+  // Main app
+  return (
+    <div className="min-h-screen bg-black flex flex-col">
+      <div className="max-w-2xl mx-auto px-4 w-full flex flex-col flex-1">
+        {/* Header */}
+        <header className="flex items-center justify-between py-4">
+          <img
+            src="/cursor-logo.svg"
+            alt="Cursor"
+            className="h-5"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleLogout}
+              className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+            >
+              {userInfo?.userEmail || 'Sign out'}
+            </button>
+            {/* Activity list button */}
+            <button
+              onClick={() => setIsActivityOpen(true)}
+              className="p-2 text-zinc-600 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+              title="Activity"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        {/* Main content - conversation or empty state */}
+        {activeAgentId ? (
+          <ConversationView
+            agentId={activeAgentId}
+            apiKey={apiKey}
+            prompt={activePrompt}
+            onStatusChange={handleStatusChange}
+            onAgentUpdate={handleAgentUpdate}
+            isSdkMode={activeAgentId.startsWith('sdk-')}
+            sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
+            preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
+          />
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        {/* Composer - sticky at bottom with safe area padding */}
+        <div className="mt-auto pt-4 pb-safe sticky bottom-0 bg-black">
+          <Composer
+            onSubmit={handleLaunch}
+            isLoading={isLaunching}
+            disabled={!selectedRepo}
+            placeholder="Ask, plan, build anything"
+            repos={sortedRepos}
+            selectedRepo={selectedRepo}
+            onSelectRepo={handleSelectRepo}
+            isLoadingRepos={isLoadingRepos}
+          />
+        </div>
+
+        {/* Activity drawer (right side) */}
+        <ActivityDrawer
+          isOpen={isActivityOpen}
+          onOpenChange={setIsActivityOpen}
+          runs={runs}
+          onSelectRun={handleSelectRun}
+        />
+      </div>
     </div>
   );
 }
