@@ -44,6 +44,8 @@ export const viewport: Viewport = {
   themeColor: '#000000',
   // Tell the browser this is a dark-mode site
   colorScheme: 'dark',
+  // Extend viewport into notch/home indicator areas on iOS
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

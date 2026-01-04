@@ -245,7 +245,14 @@ export function Sidebar({
       <Drawer.Root direction="left" open={isOpen} onOpenChange={onOpenChange}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 bg-black/80 z-50" />
-          <Drawer.Content className="fixed left-0 top-0 bottom-0 z-50 flex flex-col w-[80vw] max-w-[300px] bg-neutral-950 border-r border-neutral-900">
+          <Drawer.Content 
+            className="fixed left-0 top-0 bottom-0 z-50 flex flex-col w-[80vw] max-w-[300px] bg-neutral-950 border-r border-neutral-900"
+            style={{
+              // Respect iOS safe areas (notch, home indicator, Safari UI)
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+            }}
+          >
             {/* Handle - vertical for left drawer */}
             <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-4 h-16">
               <div className="w-0.5 h-8 rounded-full bg-neutral-700" />

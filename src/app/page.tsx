@@ -626,8 +626,8 @@ export default function Home() {
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile header with hamburger */}
-        <header className="md:hidden flex items-center p-2">
+        {/* Mobile header with hamburger - pt-safe for notch/Dynamic Island */}
+        <header className="md:hidden flex items-center p-2 pt-safe">
           <button
             onClick={() => setIsSidebarOpen(true)}
             className="w-11 h-11 flex items-center justify-center text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
