@@ -24,6 +24,15 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  icons: {
+    // Apple touch icon for home screen
+    apple: [
+      { url: '/cursor-logo.svg', type: 'image/svg+xml' },
+    ],
+    icon: [
+      { url: '/cursor-logo.svg', type: 'image/svg+xml' },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
@@ -31,7 +40,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Theme color for Safari browser chrome - pure black to match the app
   themeColor: '#000000',
+  // Tell the browser this is a dark-mode site
+  colorScheme: 'dark',
 };
 
 export default function RootLayout({
