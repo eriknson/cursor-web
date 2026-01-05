@@ -98,40 +98,17 @@ function formatRelativeTime(dateStr: string): { time: string; showAgo: boolean }
 }
 
 function getRepoName(agent: Agent): string {
-  const source = agent.source;
-  
-  // Check for explicit name/repoName fields that API might return
-  if (source.name) {
-    return source.name;
-  }
-  if (source.repoName) {
-    return source.repoName;
-  }
-  
-  // Try to get repo name from source.repository (format: "owner/name")
-  const repository = source.repository;
+  // Repository format is "github.com/owner/repo-name"
+  // We want the last part (repo name)
+  const repository = agent.source.repository;
   const parts = repository.split('/');
-  if (parts.length >= 2) {
-    return parts[1];
+  
+  // Get the last part which is the repo name
+  const repoName = parts[parts.length - 1];
+  if (repoName && repoName !== 'github.com') {
+    return repoName;
   }
   
-  // Try to extract from various GitHub URLs in target
-  const urlsToTry = [
-    agent.target?.prUrl,
-    agent.target?.commitUrl,
-    agent.target?.url,
-  ];
-  
-  for (const url of urlsToTry) {
-    if (url) {
-      const urlMatch = url.match(/github\.com\/[^/]+\/([^/]+)/);
-      if (urlMatch && urlMatch[1]) {
-        return urlMatch[1];
-      }
-    }
-  }
-  
-  // Last resort: return whatever we have
   return repository;
 }
 

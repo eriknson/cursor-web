@@ -55,7 +55,7 @@ export interface Agent {
   name: string;
   status: 'CREATING' | 'RUNNING' | 'FINISHED' | 'STOPPED' | 'ERROR';
   source: {
-    repository: string;
+    repository: string; // Format: "github.com/owner/repo-name"
     ref: string;
   };
   target: {
@@ -75,9 +75,14 @@ export interface Agent {
 
 // Helper to construct GitHub URLs from repository string
 export function parseRepository(repository: string): { owner: string; repo: string } | null {
-  // Repository format is typically "owner/repo"
+  // Repository format is "github.com/owner/repo" or "owner/repo"
   const parts = repository.split('/');
+  if (parts.length >= 3 && parts[0].includes('github')) {
+    // Format: "github.com/owner/repo"
+    return { owner: parts[1], repo: parts[2] };
+  }
   if (parts.length >= 2) {
+    // Format: "owner/repo"
     return { owner: parts[0], repo: parts[1] };
   }
   return null;
