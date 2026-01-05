@@ -36,6 +36,11 @@ A web interface for launching and managing Cursor Cloud Agents.
    ```
    Cross-building mac targets is not supported on Linux; run on macOS for DMG generation.
 
+5. Run built app locally (after `npm run build`):
+   ```bash
+   npm start
+   ```
+
 ### Environment variables
 
 Copy `.env.example` to `.env` (optional):
@@ -46,6 +51,10 @@ VITE_MOCK_LATENCY_MS=200
 ```
 
 Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid key). Adjust mock latency to taste for demos.
+
+### Packaging notes
+
+- DMG packaging requires macOS and will use `dmg-license` (added as optional dependency). On Linux, `npm run package` will fail after build; use macOS to produce the DMG.
 
 ## Getting an API Key
 

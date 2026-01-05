@@ -13,6 +13,7 @@
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
     "build:main": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist --external:electron --sourcemap",
+    "start": "electron dist/main.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"electron/**/*.{ts,tsx}\"",
     "package": "npm run build && electron-builder --mac"
   },
@@ -62,5 +63,8 @@
       "category": "public.app-category.productivity",
       "icon": "public/icon-512.png"
     }
+  },
+  "optionalDependencies": {
+    "dmg-license": "^1.0.11"
   }
 }
