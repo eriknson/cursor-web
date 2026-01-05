@@ -88,6 +88,13 @@ Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid ke
   ```
 - Run `npm run dev` and enter your real Cursor API key.
 
+### Reset local data
+
+- Stored via `electron-store` in the userData directory (`cursor-desktop/config.json`):
+  - macOS: `~/Library/Application Support/cursor-desktop/config.json`
+  - Linux: `~/.config/cursor-desktop/config.json`
+- Delete this file to clear API key, repo cache, last repo, and window state.
+
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
