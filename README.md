@@ -9,23 +9,41 @@ A web interface for launching and managing Cursor Cloud Agents.
 - Activity history with recent runs
 - Model selection (composer-1, opus-4.5, gpt-5.2)
 
-## Setup
+## Setup (Electron dev)
 
 1. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Run the development server:
+2. Run the Electron dev workflow (mock API enabled by default):
    ```bash
    npm run dev
    ```
+   - Renderer runs on Vite at http://localhost:5173
+   - Electron main/preload are built with esbuild (watch)
+   - Electron app launches pointing to the dev server
+   - Mock Cursor API is enabled via `VITE_MOCK_CURSOR_API=true` to let you exercise flows without a real key. Set `VITE_MOCK_CURSOR_API=false` to hit the real API (requires a valid key).
 
-3. Open [http://localhost:3000](http://localhost:3000) and enter your Cursor API key.
+3. Build for production (renderer + main/preload):
+   ```bash
+   npm run build
+   ```
+
+4. Package (unsigned DMG target; requires macOS for actual DMG output):
+   ```bash
+   npm run package
+   ```
+   Cross-building mac targets is not supported on Linux; run on macOS for DMG generation.
 
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
+
+## Notes
+
+- SDK mode is disabled in this build (cloud-only). Follow-ups and continuation chains work in cloud mode; mock mode simulates agents and conversations.
+- Window size/position/maximized state persists via `electron-store`.
 
 ## A Poem About Penguins
 
