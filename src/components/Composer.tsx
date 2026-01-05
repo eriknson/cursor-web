@@ -51,12 +51,7 @@ const AVAILABLE_MODELS = [
   'gpt-5.2',
 ] as const;
 
-const AGENT_MODES = [
-  { value: 'cloud', label: 'Cloud', disabled: false },
-  { value: 'sdk', label: 'SDK (soon)', disabled: true },
-] as const;
-
-export type AgentMode = (typeof AGENT_MODES)[number]['value'];
+export type AgentMode = 'cloud' | 'sdk';
 
 interface ComposerProps {
   onSubmit: (prompt: string, mode: AgentMode, model: string) => void;
@@ -92,7 +87,6 @@ export function Composer({
 }: ComposerProps) {
   const [value, setValue] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(AVAILABLE_MODELS[0]);
-  const [agentMode, setAgentMode] = useState<string>('cloud');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Get iOS keyboard height to adjust composer position
@@ -139,7 +133,7 @@ export function Composer({
 
   const handleSubmit = () => {
     if (!value.trim() || isLoading || disabled) return;
-    onSubmit(value.trim(), agentMode as AgentMode, selectedModel);
+    onSubmit(value.trim(), 'cloud', selectedModel);
     setValue('');
     
     // Blur the textarea to dismiss keyboard and trigger viewport fix

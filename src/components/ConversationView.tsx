@@ -325,11 +325,8 @@ function CloudAgentView({
   // Show thinking when: pending, no agent messages yet, or waiting for response to follow-up
   const showThinking = isPending || (isActive && agentMessages.length === 0) || isWaitingForResponse;
   
-  // Determine if the latest agent message is being actively worked on
-  const latestAgentMessage = agentMessages[agentMessages.length - 1];
-  const isLatestMessageActive = latestAgentMessage && isActive && !isWaitingForResponse;
-  
   // Always show shimmer on something when active - either the message or thinking text
+  const latestAgentMessage = agentMessages[agentMessages.length - 1];
   const needsShimmerIndicator = isActive && !showThinking && latestAgentMessage;
 
   return (

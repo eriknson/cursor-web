@@ -517,7 +517,7 @@ export function AgentDrawer({
     }
 
     return gotData;
-  }, [agentId, apiKey, onStatusChange]);
+  }, [agentId, apiKey, onStatusChange, onAgentUpdate]);
 
   const scheduleNextPoll = useCallback(() => {
     if (pollingRef.current) clearTimeout(pollingRef.current);

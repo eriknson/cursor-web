@@ -71,7 +71,6 @@ export async function POST(request: NextRequest) {
         // Consume the stream to keep it running and handle completion
         (async () => {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             for await (const _ of agentStream) {
               // Updates already sent via onDelta
             }

@@ -13,7 +13,6 @@ import {
   launchAgent,
   addFollowUp,
   fetchGitHubRepoInfo,
-  getAgentStatus,
   getAgentConversation,
   ApiKeyInfo,
   RateLimitError,
@@ -33,7 +32,7 @@ import {
   CachedRepo,
 } from '@/lib/storage';
 
-export default function Home() {
+export function App() {
   // Auth state
   const [isInitializing, setIsInitializing] = useState(true);
   const [apiKey, setApiKeyState] = useState<string | null>(null);
@@ -49,7 +48,6 @@ export default function Home() {
 
   // Runs state - fetched from Cursor API (source of truth)
   const [runs, setRuns] = useState<Agent[]>([]);
-  const [isLoadingRuns, setIsLoadingRuns] = useState(true);
   const [isLaunching, setIsLaunching] = useState(false);
 
   // Sidebar state (left side, for mobile drawer)
@@ -106,15 +104,12 @@ export default function Home() {
       setRuns(agents);
     } catch (err) {
       console.error('Failed to fetch agents:', err);
-    } finally {
-      setIsLoadingRuns(false);
     }
   }, []);
 
   // Load runs when API key is available
   useEffect(() => {
     if (apiKey) {
-      setIsLoadingRuns(true);
       fetchRuns(apiKey);
     }
   }, [apiKey, fetchRuns]);
@@ -122,11 +117,11 @@ export default function Home() {
   // Poll for run updates every 30 seconds to keep list synced across devices
   useEffect(() => {
     if (!apiKey) return;
-    
+
     const interval = setInterval(() => {
       fetchRuns(apiKey);
     }, 30000);
-    
+
     return () => clearInterval(interval);
   }, [apiKey, fetchRuns]);
 
@@ -173,11 +168,11 @@ export default function Home() {
     return [...repos].sort((a, b) => {
       const aTime = a.pushedAt ? new Date(a.pushedAt).getTime() : 0;
       const bTime = b.pushedAt ? new Date(b.pushedAt).getTime() : 0;
-      
+
       if (aTime !== bTime) {
         return bTime - aTime; // Most recently pushed first
       }
-      
+
       return a.name.localeCompare(b.name);
     });
   }, [repos]);
@@ -210,12 +205,12 @@ export default function Home() {
     setIsLoadingRepos(true);
     try {
       const repoList = await listRepositories(key);
-      
+
       // Fetch pushedAt from GitHub in batches to avoid rate limits
       // GitHub allows 60 requests/hour for unauthenticated users
       const BATCH_SIZE = 10;
       const mappedRepos: CachedRepo[] = [];
-      
+
       for (let i = 0; i < repoList.length; i += BATCH_SIZE) {
         const batch = repoList.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
@@ -230,13 +225,13 @@ export default function Home() {
           })
         );
         mappedRepos.push(...batchResults);
-        
+
         // Small delay between batches to be nice to the API
         if (i + BATCH_SIZE < repoList.length) {
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 100));
         }
       }
-      
+
       setRepos(mappedRepos);
       setCachedRepos(mappedRepos);
     } catch (err) {
@@ -251,8 +246,9 @@ export default function Home() {
         }
       }
       // Fall back to cached data on other errors
-      if (cached && cached.length > 0) {
-        setRepos(cached);
+      const cachedRepos = getCachedRepos(true);
+      if (cachedRepos && cachedRepos.length > 0) {
+        setRepos(cachedRepos);
       }
     } finally {
       setIsLoadingRepos(false);
@@ -305,11 +301,11 @@ export default function Home() {
   // Determine if we're in conversation mode (can send messages)
   // Available when there's an active cloud agent (running or finished)
   const isConversationMode = Boolean(
-    activeAgentId && 
-    !activeAgentId.startsWith('sdk-') && 
-    activeAgentId !== 'pending'
+    activeAgentId &&
+      !activeAgentId.startsWith('sdk-') &&
+      activeAgentId !== 'pending'
   );
-  
+
   // Check if agent is still running (for UI hints)
   const isAgentRunning = activeAgentStatus === 'RUNNING' || activeAgentStatus === 'CREATING';
   const isAgentFinished = activeAgentStatus === 'FINISHED' || activeAgentStatus === 'STOPPED';
@@ -321,7 +317,7 @@ export default function Home() {
     // If in conversation mode, try follow-up first, then fall back to continuation
     if (isConversationMode && activeAgentId) {
       setIsLaunching(true);
-      
+
       // If agent is still running, send a follow-up
       if (isAgentRunning) {
         try {
@@ -337,7 +333,7 @@ export default function Home() {
         }
         return;
       }
-      
+
       // Agent is finished - try follow-up first, then fall back to launching continuation agent
       try {
         await addFollowUp(apiKey, activeAgentId, {
@@ -345,7 +341,7 @@ export default function Home() {
         });
         // If it works, update status and trigger polling restart in ConversationView
         setActiveAgentStatus('RUNNING');
-        setRefreshTrigger(prev => prev + 1);
+        setRefreshTrigger((prev) => prev + 1);
         setIsLaunching(false);
         return;
       } catch (err) {
@@ -353,44 +349,44 @@ export default function Home() {
         console.log('Follow-up to finished agent failed, launching continuation:', err);
         // Fall through to launch a new agent as continuation
       }
-      
+
       // Launch a continuation agent on the same repo
-      const repoToUse = activeAgentRepo ? repos.find(r => r.name === activeAgentRepo) : selectedRepo;
+      const repoToUse = activeAgentRepo ? repos.find((r) => r.name === activeAgentRepo) : selectedRepo;
       if (!repoToUse) {
         alert('Could not find repository for continuation');
         setIsLaunching(false);
         return;
       }
-      
+
       try {
         // Build context from previous conversation and save current turn for display
         const previousAgent = agentCache[activeAgentId];
         let contextPrompt = prompt;
-        
+
         // Save the current conversation as a turn for the history display
         const currentTurn: ConversationTurn = {
           prompt: activePrompt,
           messages: previousAgent?.messages || [],
           summary: previousAgent?.agent?.summary,
         };
-        
+
         if (previousAgent) {
           const summary = previousAgent.agent?.summary;
-          
+
           // Create a brief context header for the new agent
           if (summary) {
             contextPrompt = `[Continuing from previous work]\nPrevious task completed: ${summary}\n\nNew request: ${prompt}`;
           }
         }
-        
+
         // Add current turn to conversation history
-        setConversationTurns(prev => [...prev, currentTurn]);
-        
+        setConversationTurns((prev) => [...prev, currentTurn]);
+
         // Set pending state to show immediate feedback
         setActivePrompt(prompt); // Keep original prompt for display
         setActiveAgentId('pending');
         setActiveAgentStatus('CREATING');
-        
+
         const agent = await launchAgent(apiKey, {
           prompt: { text: contextPrompt },
           source: { repository: repoToUse.repository },
@@ -399,13 +395,13 @@ export default function Home() {
         });
 
         // Optimistically add to local state - API is source of truth, will sync on next poll
-        setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
+        setRuns((prev) => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch continuation agent:', err);
         alert(err instanceof Error ? err.message : 'Failed to continue');
         // Remove the turn we just added since the continuation failed
-        setConversationTurns(prev => prev.slice(0, -1));
+        setConversationTurns((prev) => prev.slice(0, -1));
         setActiveAgentId(null);
         setActivePrompt('');
       } finally {
@@ -420,10 +416,10 @@ export default function Home() {
     setIsLaunching(true);
     setActivePrompt(prompt);
     setActiveAgentRepo(selectedRepo.name);
-    
+
     // Clear any previous conversation history since this is a fresh start
     setConversationTurns([]);
-    
+
     // Show the prompt immediately by setting a pending agent ID
     // This lets the conversation view render right away
     setActiveAgentId('pending');
@@ -438,22 +434,31 @@ export default function Home() {
         // Create a temporary Agent-like object for local display
         const tempAgent: Agent = {
           id: tempRunId,
-          name: prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt,
+          name: prompt.length > 50 ? `${prompt.slice(0, 50)}...` : prompt,
           status: 'RUNNING',
           source: { repository: selectedRepo.repository, ref: 'main' },
-          target: { branchName: '', url: '', autoCreatePr: false, openAsCursorGithubApp: false, skipReviewerRequest: false },
+          target: {
+            branchName: '',
+            url: '',
+            autoCreatePr: false,
+            openAsCursorGithubApp: false,
+            skipReviewerRequest: false,
+          },
           createdAt: new Date().toISOString(),
         };
-        setRuns(prev => [tempAgent, ...prev]);
+        setRuns((prev) => [tempAgent, ...prev]);
         setActiveAgentId(tempRunId);
         setSdkStepsMap((prev) => ({ ...prev, [tempRunId]: [] }));
 
         // Stream the response from the SDK via our API route
-        for await (const step of streamSdkAgent({
-          apiKey,
-          model,
-          repository: selectedRepo.repository,
-        }, prompt)) {
+        for await (const step of streamSdkAgent(
+          {
+            apiKey,
+            model,
+            repository: selectedRepo.repository,
+          },
+          prompt,
+        )) {
           setSdkStepsMap((prev) => ({
             ...prev,
             [tempRunId]: [...(prev[tempRunId] || []), step],
@@ -461,9 +466,7 @@ export default function Home() {
         }
 
         // Mark as finished
-        setRuns((prev) =>
-          prev.map((r) => (r.id === tempRunId ? { ...r, status: 'FINISHED' } : r))
-        );
+        setRuns((prev) => prev.map((r) => (r.id === tempRunId ? { ...r, status: 'FINISHED' } : r)));
       } catch (err) {
         console.error('SDK agent failed:', err);
         alert(err instanceof Error ? err.message : 'SDK agent failed');
@@ -484,7 +487,7 @@ export default function Home() {
         });
 
         // Optimistically add to local state - API is source of truth, will sync on next poll
-        setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
+        setRuns((prev) => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch agent:', err);
@@ -516,16 +519,16 @@ export default function Home() {
   // Updates local state for immediate UI feedback - API is source of truth
   const handleAgentUpdate = (agentId: string, updates: { status?: string; name?: string }) => {
     if (updates.status || updates.name) {
-      setRuns(prev =>
+      setRuns((prev) =>
         prev.map((agent) =>
-          agent.id === agentId 
-            ? { 
-                ...agent, 
+          agent.id === agentId
+            ? {
+                ...agent,
                 ...(updates.status && { status: updates.status as Agent['status'] }),
                 ...(updates.name && { name: updates.name }),
-              } 
-            : agent
-        )
+              }
+            : agent,
+        ),
       );
     }
   };
@@ -558,18 +561,16 @@ export default function Home() {
 
           <div className="space-y-4">
             <div>
-            <input
-              type="password"
-              value={apiKeyInput}
-              onInput={(e) => setApiKeyInput((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleValidateKey()}
-              placeholder="Enter Cursor API key"
-              className="w-full px-4 py-3 bg-transparent border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
-              autoFocus
-            />
-              {authError && (
-                <p className="mt-2 text-xs text-zinc-500">{authError}</p>
-              )}
+              <input
+                type="password"
+                value={apiKeyInput}
+                onInput={(e) => setApiKeyInput((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleValidateKey()}
+                placeholder="Enter Cursor API key"
+                className="w-full px-4 py-3 bg-transparent border border-zinc-800 rounded-xl text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700"
+                autoFocus
+              />
+              {authError && <p className="mt-2 text-xs text-zinc-500">{authError}</p>}
             </div>
 
             <button
