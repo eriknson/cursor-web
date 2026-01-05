@@ -97,10 +97,42 @@ function formatRelativeTime(dateStr: string): { time: string; showAgo: boolean }
   return { time: `${diffWeeks}w`, showAgo: true };
 }
 
-function getRepoName(repository: string): string {
-  // Repository is in format "owner/name"
+function getRepoName(agent: Agent): string {
+  const source = agent.source;
+  
+  // Check for explicit name/repoName fields that API might return
+  if (source.name) {
+    return source.name;
+  }
+  if (source.repoName) {
+    return source.repoName;
+  }
+  
+  // Try to get repo name from source.repository (format: "owner/name")
+  const repository = source.repository;
   const parts = repository.split('/');
-  return parts.length >= 2 ? parts[1] : repository;
+  if (parts.length >= 2) {
+    return parts[1];
+  }
+  
+  // Try to extract from various GitHub URLs in target
+  const urlsToTry = [
+    agent.target?.prUrl,
+    agent.target?.commitUrl,
+    agent.target?.url,
+  ];
+  
+  for (const url of urlsToTry) {
+    if (url) {
+      const urlMatch = url.match(/github\.com\/[^/]+\/([^/]+)/);
+      if (urlMatch && urlMatch[1]) {
+        return urlMatch[1];
+      }
+    }
+  }
+  
+  // Last resort: return whatever we have
+  return repository;
 }
 
 function SidebarContent({
@@ -137,7 +169,7 @@ function SidebarContent({
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     const name = (agent.name || '').toLowerCase();
-    const repo = getRepoName(agent.source.repository).toLowerCase();
+    const repo = getRepoName(agent).toLowerCase();
     return name.includes(query) || repo.includes(query);
   });
 
@@ -166,7 +198,7 @@ function SidebarContent({
       </div>
 
       {/* Runs list */}
-      <div className="flex-1 overflow-y-auto px-2 overscroll-contain">
+      <div className="flex-1 overflow-y-auto px-2" style={{ WebkitOverflowScrolling: 'touch' }}>
         {filteredRuns.length === 0 ? (
           <div className="text-center py-12 text-neutral-600 text-sm">
             {searchQuery.trim() ? 'No matching activity' : 'No activity yet'}
@@ -188,7 +220,7 @@ function SidebarContent({
                         {agent.name || 'Agent task'}
                       </span>
                       <span className="text-xs text-neutral-600 truncate block mt-0.5">
-                        {getRepoName(agent.source.repository)}
+                        {getRepoName(agent)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -247,9 +279,13 @@ export function Sidebar({
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 bg-black/80 z-50" />
           <Drawer.Content 
-            className="fixed left-0 top-0 bottom-0 z-50 flex flex-col w-[80vw] max-w-[300px] bg-neutral-950 border-r border-neutral-900"
+            className="fixed left-0 z-50 flex flex-col w-[80vw] max-w-[300px] bg-neutral-950 border-r border-neutral-900"
             style={{
-              // Respect iOS safe areas (notch, home indicator, Safari UI)
+              // Force full height including safe areas
+              top: 0,
+              bottom: 0,
+              height: '100%',
+              // Respect iOS safe areas (notch, home indicator, Safari UI) as padding
               paddingTop: 'env(safe-area-inset-top)',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}

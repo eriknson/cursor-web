@@ -34,8 +34,6 @@ body {
   /* Fix 100vh bug on mobile */
   min-height: 100%;
   min-height: -webkit-fill-available;
-  /* Prevent pull-to-refresh and rubber-banding on main container */
-  overscroll-behavior: none;
 }
 
 /* Smooth animations */
@@ -184,6 +182,9 @@ select:focus-visible {
   bottom: 0 !important;
   width: auto !important;
   max-width: 100vw !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important; /* Dynamic viewport height for iOS */
 }
 
 /* Mobile touch feedback - active states */
@@ -206,10 +207,6 @@ a:active {
   height: 100dvh;
 }
 
-/* Allow overscroll in specific scroll containers */
-.overscroll-contain {
-  overscroll-behavior: contain;
-}
 
 /* ========================================
    iOS PWA Scroll & Viewport Optimizations
@@ -217,62 +214,17 @@ a:active {
 
 /* iOS PWA scroll improvements for conversation container */
 [data-scroll-container] {
-  /* Smooth momentum scrolling on iOS */
+  /* Smooth momentum scrolling on iOS - enables natural bounce */
   -webkit-overflow-scrolling: touch;
-  
-  /* Prevent scroll chaining - keeps scroll within container */
-  overscroll-behavior-y: contain;
   
   /* GPU acceleration for smoother scrolling */
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
 }
 
-/* Prevent iOS rubber-banding on the root - PWA specific */
-@supports (-webkit-touch-callout: none) {
-  /* iOS-only styles */
-  html {
-    /* Prevent overscroll on the html element */
-    overflow: hidden;
-    position: fixed;
-    width: 100%;
-  }
-  
-  body {
-    /* Allow body to scroll but contain it */
-    overflow: hidden;
-    position: fixed;
-    width: 100%;
-  }
-}
-
-/* Main app container scrolling */
-.app-scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-}
 
 /* Prevent zoom on double-tap for interactive elements */
 button, a, input, textarea, select {
   touch-action: manipulation;
 }
 
-/* Stable positioning for composer on iOS */
-@supports (-webkit-touch-callout: none) {
-  .composer-sticky {
-    /* More stable positioning on iOS when keyboard opens */
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
-  }
-}
-
-/* Prevent layout shift during keyboard open/close */
-.keyboard-stable {
-  /* Prevents content from jumping when virtual keyboard appears */
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-}

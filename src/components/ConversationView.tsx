@@ -702,7 +702,7 @@ export function ConversationView({
     <div 
       ref={scrollRef}
       data-scroll-container
-      className="flex-1 overflow-y-auto flex flex-col overscroll-contain keyboard-stable"
+      className="flex-1 overflow-y-auto flex flex-col"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       <div className="flex-1" />

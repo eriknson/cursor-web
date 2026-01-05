@@ -654,7 +654,7 @@ export default function Home() {
         </header>
 
         {/* Main content - conversation or empty state */}
-        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0 keyboard-stable">
+        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0">
           {activeAgentId ? (
             <ConversationView
               agentId={activeAgentId}
@@ -673,10 +673,10 @@ export default function Home() {
           )}
 
           {/* Composer - sticky at bottom with backdrop blur so content scrolls behind */}
-          <div className="mt-auto sticky bottom-0 -mx-4 px-4 composer-sticky">
+          <div className="mt-auto sticky bottom-0 -mx-4 px-4">
             {/* Gradient fade for content scrolling behind */}
             <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-transparent to-black/70 pointer-events-none" />
-            <div className="pt-6 pb-safe bg-black/70 backdrop-blur-xl keyboard-stable">
+            <div className="pt-6 pb-safe bg-black/70 backdrop-blur-xl">
               <Composer
                 onSubmit={handleLaunch}
                 isLoading={isLaunching}

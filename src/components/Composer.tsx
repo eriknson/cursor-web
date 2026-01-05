@@ -5,95 +5,44 @@ import { CachedRepo } from '@/lib/storage';
 import { CursorLoader } from './CursorLoader';
 
 // Hook to handle iOS keyboard viewport issues
-// When the virtual keyboard opens/closes, iOS can leave the viewport in a weird state
-function useKeyboardViewportFix(textareaRef: React.RefObject<HTMLTextAreaElement | null>) {
-  const wasKeyboardOpen = useRef(false);
+// Returns keyboard height so parent can adjust layout
+function useIOSKeyboard(): number {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const initialViewportHeight = useRef(0);
   
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    
     // Check if we're on iOS/mobile Safari
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     
     if (!isIOS) return;
     
-    // Store initial viewport height
-    initialViewportHeight.current = window.visualViewport?.height || window.innerHeight;
+    const vv = window.visualViewport;
+    if (!vv) return;
     
-    const resetViewport = () => {
-      // Force the viewport to recalculate by scrolling
-      // This fixes the "stuck content" issue on iOS when keyboard dismisses
-      requestAnimationFrame(() => {
-        // Longer delay to let the keyboard fully dismiss on iOS
-        setTimeout(() => {
-          // Reset any transforms that might be stuck
-          document.body.style.transform = '';
-          
-          // Scroll the window to trigger viewport recalculation
-          window.scrollTo(0, 0);
-          
-          // Find and scroll the conversation container to bottom
-          const scrollContainer = document.querySelector('[data-scroll-container]');
-          if (scrollContainer) {
-            // Use instant scroll to avoid animation conflicts with keyboard
-            scrollContainer.scrollTo({
-              top: scrollContainer.scrollHeight,
-              behavior: 'instant' as ScrollBehavior
-            });
-          }
-          
-          // Force a reflow to ensure layout is recalculated
-          void document.body.offsetHeight;
-        }, 100); // Slightly longer delay for iOS keyboard animation
-      });
-    };
+    // Store initial viewport height (full screen without keyboard)
+    initialViewportHeight.current = window.innerHeight;
     
-    const handleFocus = () => {
-      wasKeyboardOpen.current = true;
-      // Prevent body scroll when keyboard is open (iOS PWA)
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-    };
-    
-    const handleBlur = () => {
-      if (!wasKeyboardOpen.current) return;
-      wasKeyboardOpen.current = false;
-      // Restore body scroll
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-      resetViewport();
-    };
-    
-    // Also listen to visualViewport resize to detect keyboard dismiss
-    const handleViewportResize = () => {
-      const vv = window.visualViewport;
-      if (!vv) return;
+    const handleViewportChange = () => {
+      // Calculate keyboard height from difference between layout and visual viewport
+      const currentKeyboardHeight = window.innerHeight - vv.height;
       
-      const currentHeight = vv.height;
-      const heightDiff = initialViewportHeight.current - currentHeight;
-      
-      // If viewport height increased back close to original, keyboard was dismissed
-      if (wasKeyboardOpen.current && heightDiff < 50) {
-        wasKeyboardOpen.current = false;
-        resetViewport();
+      // Only set if keyboard is actually visible (threshold to avoid false positives)
+      if (currentKeyboardHeight > 100) {
+        setKeyboardHeight(currentKeyboardHeight);
+      } else {
+        setKeyboardHeight(0);
       }
     };
     
-    textarea.addEventListener('focus', handleFocus);
-    textarea.addEventListener('blur', handleBlur);
-    window.visualViewport?.addEventListener('resize', handleViewportResize);
+    vv.addEventListener('resize', handleViewportChange);
     
     return () => {
-      textarea.removeEventListener('focus', handleFocus);
-      textarea.removeEventListener('blur', handleBlur);
-      window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      vv.removeEventListener('resize', handleViewportChange);
     };
-  }, [textareaRef]);
+  }, []);
+  
+  return keyboardHeight;
 }
 
 const AVAILABLE_MODELS = [
@@ -146,8 +95,21 @@ export function Composer({
   const [agentMode, setAgentMode] = useState<string>('cloud');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fix iOS keyboard viewport issues
-  useKeyboardViewportFix(textareaRef);
+  // Get iOS keyboard height to adjust composer position
+  const keyboardHeight = useIOSKeyboard();
+
+  // Scroll conversation to bottom when keyboard opens
+  useEffect(() => {
+    if (keyboardHeight > 0) {
+      const scrollContainer = document.querySelector('[data-scroll-container]');
+      if (scrollContainer) {
+        scrollContainer.scrollTo({
+          top: scrollContainer.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [keyboardHeight]);
 
   // Auto-resize textarea - grows with content, no max height
   useEffect(() => {
@@ -207,7 +169,13 @@ export function Composer({
       : placeholder;
 
   return (
-    <div className="relative">
+    <div 
+      className="relative transition-transform duration-200 ease-out"
+      style={{ 
+        // Move composer up when iOS keyboard is visible
+        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined 
+      }}
+    >
       <div className="relative rounded-xl bg-white/[0.03] border border-white/[0.08] focus-within:border-white/[0.15] transition-colors">
         <textarea
           ref={textareaRef}
