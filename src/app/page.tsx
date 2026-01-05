@@ -147,6 +147,8 @@ export default function Home() {
     setAuthError(message);
   }, []);
 
+  const runsFetchInFlight = useRef(false);
+
   // Load API key from localStorage on mount
   useEffect(() => {
     const storedKey = getApiKey();
@@ -178,6 +180,8 @@ export default function Home() {
 
   // Fetch runs from Cursor API (source of truth - syncs across all devices)
   const fetchRuns = useCallback(async (key: string) => {
+    if (runsFetchInFlight.current) return;
+    runsFetchInFlight.current = true;
     setRunsError(null);
     try {
       const agents = await listAgents(key, 50);
@@ -192,6 +196,7 @@ export default function Home() {
       }
     } finally {
       setIsLoadingRuns(false);
+      runsFetchInFlight.current = false;
     }
   }, [handleAuthFailure]);
 
