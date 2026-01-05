@@ -4,15 +4,102 @@
 
 import { NextRequest } from 'next/server';
 import { CursorAgent } from '@cursor-ai/january';
+import { isMockApiEnabled } from '@/lib/mockApi';
+
+const encoder = new TextEncoder();
+
+function streamUpdates(updates: Array<() => unknown>, intervalMs = 250): ReadableStream<Uint8Array> {
+  let isClosed = false;
+  return new ReadableStream({
+    start(controller) {
+      let idx = 0;
+      const send = () => {
+        if (isClosed || idx >= updates.length) {
+          controller.close();
+          return;
+        }
+        const payload = updates[idx++]();
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        setTimeout(send, intervalMs);
+      };
+      send();
+    },
+    cancel() {
+      isClosed = true;
+    },
+  });
+}
 
 export async function POST(request: NextRequest) {
-  const { apiKey, model, repository, ref, message } = await request.json();
+  let body: { apiKey?: string; model?: string; repository?: string; ref?: string; message?: string };
+
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const searchParams = new URL(request.url).searchParams;
+  const mockFailure = searchParams.get('mock_failure');
+  const { apiKey, model, repository, ref, message } = body;
 
   if (!apiKey || !repository || !message) {
     return new Response(
       JSON.stringify({ error: 'Missing required fields: apiKey, repository, message' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } }
     );
+  }
+
+  // Mock mode: emit deterministic stream without hitting Cursor SDK
+  if (isMockApiEnabled()) {
+    // Allow per-request mock failure overrides for SDK route
+    if (mockFailure === 'rate-limit') {
+      return new Response(JSON.stringify({ error: 'Rate limited (mock)' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (mockFailure === 'auth') {
+      return new Response(JSON.stringify({ error: 'Authentication failed (mock)' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (mockFailure === 'network') {
+      return new Response(null, { status: 503 });
+    }
+    if (mockFailure === 'slow') {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (mockFailure === 'malformed') {
+      return new Response('data: {bad json}\n\n', {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
+    const updates = [
+      () => ({ type: 'thinking-delta', text: 'Booting mock SDK agent...' }),
+      () => ({ type: 'tool-call-started', toolCall: { type: 'shell', args: { command: 'echo "mock"' } } }),
+      () => ({ type: 'tool-call-completed', toolCall: { type: 'shell', result: { status: 'ok', value: { exitCode: 0 } } } }),
+      () => ({ type: 'text-delta', text: `Plan: ${message.slice(0, 60)}` }),
+      () => ({ type: 'text-delta', text: 'Result: completed in mock mode.' }),
+      () => ({ type: 'done' }),
+    ];
+
+    return new Response(streamUpdates(updates, 180), {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
   }
 
   try {
@@ -27,9 +114,6 @@ export async function POST(request: NextRequest) {
     });
 
     // Create a readable stream for the response
-    const encoder = new TextEncoder();
-    
-    // Use a queue to handle async updates
     const updateQueue: string[] = [];
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
     let isStreamClosed = false;
@@ -101,28 +185,31 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error('SDK Agent Error:', err);
-    
+
     let error = 'Failed to create agent';
     let details = '';
-    
+    let status = 500;
+
     if (err instanceof Error) {
       error = err.message;
-      
-      // Check for common issues
+
       if (error.includes('503')) {
         error = 'Cursor SDK service unavailable';
         details = 'The SDK may require feature flag access from Cursor team, or the service is temporarily down.';
+        status = 503;
       } else if (error.includes('401') || error.includes('403')) {
         error = 'Authentication failed';
         details = 'Check that your API key is valid and has SDK access enabled.';
+        status = 401;
       } else if (error.includes('429')) {
         error = 'Rate limited';
         details = 'Too many requests. Please wait a moment and try again.';
+        status = 429;
       }
     }
-    
+
     return new Response(JSON.stringify({ error, details }), {
-      status: 500,
+      status,
       headers: { 'Content-Type': 'application/json' },
     });
   }

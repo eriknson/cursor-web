@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/Sidebar';
 import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { CursorLoader } from '@/components/CursorLoader';
 import { EmptyState } from '@/components/EmptyState';
+import Image from 'next/image';
 import {
   validateApiKey,
   listRepositories,
@@ -13,13 +14,11 @@ import {
   launchAgent,
   addFollowUp,
   fetchGitHubRepoInfo,
-  getAgentStatus,
-  getAgentConversation,
   ApiKeyInfo,
   RateLimitError,
   AuthError,
+  MalformedResponseError,
   Agent,
-  Message,
 } from '@/lib/cursorClient';
 import { streamSdkAgent, AgentStep } from '@/lib/cursorSdk';
 import {
@@ -31,7 +30,64 @@ import {
   getLastSelectedRepo,
   setLastSelectedRepo,
   CachedRepo,
+  isPersistentStorage,
 } from '@/lib/storage';
+
+function Banner({
+  message,
+  tone = 'warning',
+  onClose,
+  actionLabel,
+  onAction,
+}: {
+  message: string;
+  tone?: 'warning' | 'error' | 'info';
+  onClose?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  const toneClasses =
+    tone === 'error'
+      ? 'bg-red-500/10 border-red-500/40 text-red-100'
+      : tone === 'info'
+        ? 'bg-blue-500/10 border-blue-500/40 text-blue-100'
+        : 'bg-amber-500/10 border-amber-500/40 text-amber-100';
+
+  return (
+    <div className={`flex items-start gap-3 px-3 py-2 border rounded-lg text-sm ${toneClasses}`}>
+      <span className="pt-0.5">⚠️</span>
+      <div className="flex-1">{message}</div>
+      {onAction && actionLabel && (
+        <button
+          onClick={onAction}
+          className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          {actionLabel}
+        </button>
+      )}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="text-xs opacity-60 hover:opacity-100 transition-opacity"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof RateLimitError) {
+    const wait = err.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : null;
+    return wait ? `${err.message} (wait ${wait}s)` : err.message;
+  }
+  if (err instanceof AuthError) return err.message;
+  if (err instanceof MalformedResponseError) return err.message;
+  if (err instanceof Error) return err.message;
+  return 'Something went wrong';
+}
 
 export default function Home() {
   // Auth state
@@ -76,6 +132,26 @@ export default function Home() {
   // Trigger to restart polling in ConversationView (for follow-ups to finished agents)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Error and notification surfaces
+  const [repoError, setRepoError] = useState<string | null>(null);
+  const [runsError, setRunsError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  const isMockMode = process.env.NEXT_PUBLIC_MOCK_API === 'true';
+
+  const handleAuthFailure = useCallback((message = 'Authentication failed. Please re-enter your API key.') => {
+    clearApiKey();
+    setApiKeyState(null);
+    setUserInfo(null);
+    setRepos([]);
+    setSelectedRepo(null);
+    setRuns([]);
+    setAuthError(message);
+  }, []);
+
+  const runsFetchInFlight = useRef(false);
+
   // Load API key from localStorage on mount
   useEffect(() => {
     const storedKey = getApiKey();
@@ -99,17 +175,33 @@ export default function Home() {
     setIsInitializing(false);
   }, []);
 
+  useEffect(() => {
+    if (!isPersistentStorage()) {
+      setStorageWarning(true);
+    }
+  }, []);
+
   // Fetch runs from Cursor API (source of truth - syncs across all devices)
   const fetchRuns = useCallback(async (key: string) => {
+    if (runsFetchInFlight.current) return;
+    runsFetchInFlight.current = true;
+    setRunsError(null);
     try {
       const agents = await listAgents(key, 50);
       setRuns(agents);
     } catch (err) {
       console.error('Failed to fetch agents:', err);
+      if (err instanceof AuthError) {
+        handleAuthFailure();
+        setRunsError('Authentication failed. Please re-enter your API key.');
+      } else {
+        setRunsError(toErrorMessage(err));
+      }
     } finally {
       setIsLoadingRuns(false);
+      runsFetchInFlight.current = false;
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   // Load runs when API key is available
   useEffect(() => {
@@ -208,6 +300,7 @@ export default function Home() {
     }
 
     setIsLoadingRepos(true);
+    setRepoError(null);
     try {
       const repoList = await listRepositories(key);
       
@@ -241,12 +334,19 @@ export default function Home() {
       setCachedRepos(mappedRepos);
     } catch (err) {
       console.error('Failed to fetch repos:', err);
+      if (err instanceof AuthError) {
+        handleAuthFailure();
+        setRepoError('Authentication failed. Please re-enter your API key.');
+      } else {
+        setRepoError(toErrorMessage(err));
+      }
       // On rate limit, try stale cache (ignore expiry)
       if (err instanceof RateLimitError) {
         const staleCache = getCachedRepos(true);
         if (staleCache && staleCache.length > 0) {
           console.warn('Rate limited, using stale cache');
           setRepos(staleCache);
+          setRepoError('Rate limited; showing cached repositories');
           return;
         }
       }
@@ -257,7 +357,7 @@ export default function Home() {
     } finally {
       setIsLoadingRepos(false);
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   // Validate and store API key
   const handleValidateKey = async () => {
@@ -265,6 +365,8 @@ export default function Home() {
 
     setIsValidating(true);
     setAuthError(null);
+    setRepoError(null);
+    setRunsError(null);
 
     try {
       const info = await validateApiKey(apiKeyInput.trim());
@@ -300,6 +402,9 @@ export default function Home() {
     setUserInfo(null);
     setRepos([]);
     setSelectedRepo(null);
+    setRunsError(null);
+    setRepoError(null);
+    setActionError(null);
   };
 
   // Determine if we're in conversation mode (can send messages)
@@ -316,7 +421,8 @@ export default function Home() {
 
   // Handle launching agent or sending follow-up/continuation
   const handleLaunch = async (prompt: string, mode: AgentMode, model: string) => {
-    if (!apiKey) return;
+    if (!apiKey || isLaunching) return;
+    setActionError(null);
 
     // If in conversation mode, try follow-up first, then fall back to continuation
     if (isConversationMode && activeAgentId) {
@@ -331,7 +437,12 @@ export default function Home() {
           // The ConversationView will pick up the new message via polling
         } catch (err) {
           console.error('Failed to send follow-up:', err);
-          alert(err instanceof Error ? err.message : 'Failed to send follow-up');
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         } finally {
           setIsLaunching(false);
         }
@@ -351,6 +462,12 @@ export default function Home() {
       } catch (err) {
         // Follow-up to finished agent failed - launch a continuation agent
         console.log('Follow-up to finished agent failed, launching continuation:', err);
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Fall through to launch a new agent as continuation
       }
       
@@ -403,7 +520,12 @@ export default function Home() {
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch continuation agent:', err);
-        alert(err instanceof Error ? err.message : 'Failed to continue');
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Remove the turn we just added since the continuation failed
         setConversationTurns(prev => prev.slice(0, -1));
         setActiveAgentId(null);
@@ -432,9 +554,9 @@ export default function Home() {
     if (mode === 'sdk') {
       // SDK mode - use @cursor-ai/january package
       // Note: SDK runs are local-only and don't sync via Cursor API
+      const tempRunId = `sdk-${Date.now()}`;
       try {
         // Create a temporary run for the SDK session
-        const tempRunId = `sdk-${Date.now()}`;
         // Create a temporary Agent-like object for local display
         const tempAgent: Agent = {
           id: tempRunId,
@@ -466,7 +588,18 @@ export default function Home() {
         );
       } catch (err) {
         console.error('SDK agent failed:', err);
-        alert(err instanceof Error ? err.message : 'SDK agent failed');
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
+        setRuns((prev) => prev.filter((r) => r.id !== tempRunId));
+        setSdkStepsMap((prev) => {
+          const next = { ...prev };
+          delete next[tempRunId];
+          return next;
+        });
         // Reset to null on error so user can try again
         setActiveAgentId(null);
         setActivePrompt('');
@@ -488,7 +621,12 @@ export default function Home() {
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch agent:', err);
-        alert(err instanceof Error ? err.message : 'Failed to launch agent');
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Reset to null on error so user can try again
         setActiveAgentId(null);
         setActivePrompt('');
@@ -496,6 +634,19 @@ export default function Home() {
         setIsLaunching(false);
       }
     }
+  };
+
+  const handleRefreshRuns = () => {
+    if (!apiKey) return;
+    setIsLoadingRuns(true);
+    setRunsError(null);
+    fetchRuns(apiKey);
+  };
+
+  const handleRefreshRepos = () => {
+    if (!apiKey) return;
+    setRepoError(null);
+    fetchRepos(apiKey);
   };
 
   // Handle selecting a previous run from activity drawer
@@ -549,10 +700,13 @@ export default function Home() {
       <div className="min-h-dvh bg-black flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-sm space-y-8">
           <div className="text-center">
-            <img
+            <Image
               src="/cursor-logo.svg"
               alt="Cursor"
-              className="h-10 mx-auto"
+              width={160}
+              height={40}
+              className="h-10 w-auto mx-auto"
+              priority
             />
           </div>
 
@@ -651,10 +805,63 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h12M4 14h8" />
             </svg>
           </button>
+          {isMockMode && (
+            <div className="ml-3 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-100 text-xs pointer-events-auto border border-blue-500/40">
+              Mock API
+            </div>
+          )}
         </header>
 
         {/* Main content - conversation or empty state */}
         <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0">
+          <div className="space-y-2 pt-2">
+            {isMockMode && (
+              <Banner
+                tone="info"
+                message="Mock API mode enabled. No real Cursor requests will be sent."
+                onClose={() => null}
+              />
+            )}
+            {storageWarning && (
+              <Banner
+                tone="warning"
+                message="Persistent storage is unavailable. Data will not be saved across sessions."
+                onClose={() => setStorageWarning(false)}
+              />
+            )}
+            {isLoadingRuns && (
+              <div className="text-xs text-neutral-600 flex items-center gap-2">
+                <CursorLoader size="sm" />
+                <span>Refreshing runs...</span>
+              </div>
+            )}
+            {repoError && (
+              <Banner
+                tone="warning"
+                message={`Repositories: ${repoError}`}
+                onClose={() => setRepoError(null)}
+                actionLabel="Retry"
+                onAction={handleRefreshRepos}
+              />
+            )}
+            {runsError && (
+              <Banner
+                tone="warning"
+                message={`Runs: ${runsError}`}
+                onClose={() => setRunsError(null)}
+                actionLabel="Retry"
+                onAction={handleRefreshRuns}
+              />
+            )}
+            {actionError && (
+              <Banner
+                tone="error"
+                message={actionError}
+                onClose={() => setActionError(null)}
+              />
+            )}
+          </div>
+
           {activeAgentId ? (
             <ConversationView
               agentId={activeAgentId}
@@ -662,6 +869,7 @@ export default function Home() {
               prompt={activePrompt}
               onStatusChange={handleStatusChange}
               onAgentUpdate={handleAgentUpdate}
+              onAuthFailure={() => handleAuthFailure()}
               isSdkMode={activeAgentId.startsWith('sdk-')}
               sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
               preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
