@@ -5,6 +5,13 @@ const CURSOR_API_BASE = 'https://api.cursor.com/v0';
 const USE_MOCK = import.meta.env.VITE_MOCK_CURSOR_API === 'true' || !import.meta.env.VITE_MOCK_CURSOR_API;
 const MOCK_LATENCY_MS = Number(import.meta.env.VITE_MOCK_LATENCY_MS ?? 200);
 
+type MockAgentRecord = {
+  agent: Agent;
+  messages: Message[];
+};
+
+const mockStore: { agents: Record<string, MockAgentRecord> } = { agents: {} };
+
 function getUrl(path: string): string {
   return `${CURSOR_API_BASE}${path}`;
 }
@@ -179,8 +186,35 @@ function makeMockConversation(agentId: string, status: Agent['status'] = 'RUNNIN
   };
 }
 
+function initMockStore() {
+  if (Object.keys(mockStore.agents).length > 0) return;
+
+  const baseAgents: Array<[string, Agent, Message[]]> = [
+    [
+      'agent-1',
+      makeMockAgent('agent-1', 'Investigate failing tests', 'FINISHED'),
+      makeMockConversation('agent-1', 'FINISHED').messages,
+    ],
+    [
+      'agent-2',
+      makeMockAgent('agent-2', 'Upgrade dependencies', 'RUNNING'),
+      makeMockConversation('agent-2', 'RUNNING').messages,
+    ],
+    [
+      'agent-3',
+      makeMockAgent('agent-3', 'Add telemetry opt-in', 'CREATING'),
+      makeMockConversation('agent-3', 'CREATING').messages,
+    ],
+  ];
+
+  baseAgents.forEach(([id, agent, messages]) => {
+    mockStore.agents[id] = { agent, messages: [...messages] };
+  });
+}
+
 export async function validateApiKey(apiKey: string): Promise<ApiKeyInfo> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
     return {
       apiKeyName: 'mock-key',
@@ -222,6 +256,7 @@ export class AuthError extends Error {
 
 export async function listRepositories(apiKey: string): Promise<Repository[]> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
     return [
       { owner: 'cursor-ai', name: 'example-repo', repository: 'github.com/cursor-ai/example-repo' },
@@ -247,12 +282,11 @@ export async function listRepositories(apiKey: string): Promise<Repository[]> {
 
 export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
-    return [
-      makeMockAgent('agent-1', 'Investigate failing tests', 'FINISHED'),
-      makeMockAgent('agent-2', 'Upgrade dependencies', 'RUNNING'),
-      makeMockAgent('agent-3', 'Add telemetry opt-in', 'CREATING'),
-    ].slice(0, limit);
+    return Object.values(mockStore.agents)
+      .map(({ agent }) => ({ ...agent }))
+      .slice(0, limit);
   }
 
   const res = await fetch(getUrl(`/agents?limit=${limit}`), {
@@ -270,10 +304,11 @@ export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
 
 export async function getAgentStatus(apiKey: string, agentId: string): Promise<Agent> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
-    const status: Agent['status'] =
-      agentId === 'agent-1' ? 'FINISHED' : agentId === 'agent-3' ? 'CREATING' : 'RUNNING';
-    return makeMockAgent(agentId, 'Mock agent status', status);
+    const record = mockStore.agents[agentId];
+    if (record) return { ...record.agent };
+    throw new Error('Mock agent not found');
   }
 
   const res = await fetch(getUrl(`/agents/${agentId}`), {
@@ -293,10 +328,16 @@ export async function getAgentStatus(apiKey: string, agentId: string): Promise<A
 
 export async function getAgentConversation(apiKey: string, agentId: string): Promise<ConversationResponse> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
-    const status: Agent['status'] =
-      agentId === 'agent-1' ? 'FINISHED' : agentId === 'agent-3' ? 'CREATING' : 'RUNNING';
-    return makeMockConversation(agentId, status);
+    const record = mockStore.agents[agentId];
+    if (record) {
+      return {
+        id: agentId,
+        messages: [...record.messages],
+      };
+    }
+    return makeMockConversation(agentId);
   }
 
   const res = await fetch(getUrl(`/agents/${agentId}/conversation`), {
@@ -316,8 +357,16 @@ export async function getAgentConversation(apiKey: string, agentId: string): Pro
 
 export async function launchAgent(apiKey: string, params: LaunchAgentParams): Promise<Agent> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
-    return makeMockAgent(`agent-${Date.now()}`, params.prompt.text.slice(0, 40) || 'New mock agent', 'RUNNING');
+    const id = `agent-${Date.now()}`;
+    const agent = makeMockAgent(id, params.prompt.text.slice(0, 40) || 'New mock agent', 'RUNNING');
+    const messages: Message[] = [
+      { id: `${id}-u1`, type: 'user_message', text: params.prompt.text },
+      { id: `${id}-a1`, type: 'assistant_message', text: 'Working on it...' },
+    ];
+    mockStore.agents[id] = { agent, messages };
+    return { ...agent };
   }
 
   const res = await fetch(getUrl('/agents'), {
@@ -336,7 +385,20 @@ export async function launchAgent(apiKey: string, params: LaunchAgentParams): Pr
 
 export async function addFollowUp(apiKey: string, agentId: string, params: FollowUpParams): Promise<{ id: string }> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
+    const record = mockStore.agents[agentId];
+    if (record) {
+      const followId = `${agentId}-u${record.messages.length + 1}`;
+      record.messages.push({ id: followId, type: 'user_message', text: params.prompt.text });
+      record.messages.push({
+        id: `${agentId}-a${record.messages.length + 1}`,
+        type: 'assistant_message',
+        text: 'Acknowledged follow-up. Continuing work...',
+      });
+      record.agent.status = 'RUNNING';
+      return { id: followId };
+    }
     return { id: `${agentId}-followup-${Date.now()}` };
   }
 
@@ -355,7 +417,11 @@ export async function addFollowUp(apiKey: string, agentId: string, params: Follo
 
 export async function stopAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
+    if (mockStore.agents[agentId]) {
+      mockStore.agents[agentId].agent.status = 'STOPPED';
+    }
     return { id: agentId };
   }
 
@@ -373,7 +439,9 @@ export async function stopAgent(apiKey: string, agentId: string): Promise<{ id: 
 
 export async function deleteAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
   if (USE_MOCK) {
+    initMockStore();
     await mockDelay();
+    delete mockStore.agents[agentId];
     return { id: agentId };
   }
 
