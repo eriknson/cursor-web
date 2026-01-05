@@ -144,14 +144,38 @@ function makeMockAgent(id: string, name: string, status: Agent['status'] = 'RUNN
   };
 }
 
-function makeMockConversation(agentId: string): ConversationResponse {
+function makeMockConversation(agentId: string, status: Agent['status'] = 'RUNNING'): ConversationResponse {
+  const base: Message[] = [
+    { id: `${agentId}-u1`, type: 'user_message', text: 'Fix the build in the repo.' },
+    {
+      id: `${agentId}-a1`,
+      type: 'assistant_message',
+      text: 'Starting diagnostics: checking failing workflows and dependencies.',
+    },
+    {
+      id: `${agentId}-a2`,
+      type: 'assistant_message',
+      text: 'Identified missing optional peer deps; preparing updates and lockfile refresh.',
+    },
+  ];
+
+  if (status === 'FINISHED') {
+    base.push({
+      id: `${agentId}-a3`,
+      type: 'assistant_message',
+      text: 'Build is now green. Added lint fix and updated CI matrix.',
+    });
+  } else {
+    base.push({
+      id: `${agentId}-a3`,
+      type: 'assistant_message',
+      text: 'Applying fixes; running tests...',
+    });
+  }
+
   return {
     id: agentId,
-    messages: [
-      { id: `${agentId}-u1`, type: 'user_message', text: 'Fix the build in the repo.' },
-      { id: `${agentId}-a1`, type: 'assistant_message', text: 'Working on the build fix now.' },
-      { id: `${agentId}-a2`, type: 'assistant_message', text: 'Resolved dependency issue and updated lockfile.' },
-    ],
+    messages: base,
   };
 }
 
@@ -227,6 +251,7 @@ export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
     return [
       makeMockAgent('agent-1', 'Investigate failing tests', 'FINISHED'),
       makeMockAgent('agent-2', 'Upgrade dependencies', 'RUNNING'),
+      makeMockAgent('agent-3', 'Add telemetry opt-in', 'CREATING'),
     ].slice(0, limit);
   }
 
@@ -246,7 +271,9 @@ export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
 export async function getAgentStatus(apiKey: string, agentId: string): Promise<Agent> {
   if (USE_MOCK) {
     await mockDelay();
-    return makeMockAgent(agentId, 'Mock agent status', 'RUNNING');
+    const status: Agent['status'] =
+      agentId === 'agent-1' ? 'FINISHED' : agentId === 'agent-3' ? 'CREATING' : 'RUNNING';
+    return makeMockAgent(agentId, 'Mock agent status', status);
   }
 
   const res = await fetch(getUrl(`/agents/${agentId}`), {
@@ -267,7 +294,9 @@ export async function getAgentStatus(apiKey: string, agentId: string): Promise<A
 export async function getAgentConversation(apiKey: string, agentId: string): Promise<ConversationResponse> {
   if (USE_MOCK) {
     await mockDelay();
-    return makeMockConversation(agentId);
+    const status: Agent['status'] =
+      agentId === 'agent-1' ? 'FINISHED' : agentId === 'agent-3' ? 'CREATING' : 'RUNNING';
+    return makeMockConversation(agentId, status);
   }
 
   const res = await fetch(getUrl(`/agents/${agentId}/conversation`), {
