@@ -19,6 +19,7 @@ import {
   AuthError,
   Agent,
   Message,
+  IS_MOCK,
 } from '@/lib/cursorClient';
 import { streamSdkAgent, AgentStep } from '@/lib/cursorSdk';
 import {
@@ -627,7 +628,14 @@ export function App() {
 
   // Main app
   return (
-    <div className="min-h-dvh bg-black flex">
+    <div className="min-h-dvh bg-black flex relative">
+      {IS_MOCK && (
+        <div className="absolute top-3 right-3 z-50">
+          <span className="px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-300 border border-amber-500/40">
+            Mock mode
+          </span>
+        </div>
+      )}
       {/* Left sidebar */}
       <Sidebar
         runs={runs}

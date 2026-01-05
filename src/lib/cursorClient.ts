@@ -4,6 +4,7 @@
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
 const USE_MOCK = import.meta.env.VITE_MOCK_CURSOR_API === 'true' || !import.meta.env.VITE_MOCK_CURSOR_API;
 const MOCK_LATENCY_MS = Number(import.meta.env.VITE_MOCK_LATENCY_MS ?? 200);
+export const IS_MOCK = USE_MOCK;
 
 type MockAgentRecord = {
   agent: Agent;
