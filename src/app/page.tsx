@@ -137,6 +137,16 @@ export default function Home() {
 
   const isMockMode = process.env.NEXT_PUBLIC_MOCK_API === 'true';
 
+  const handleAuthFailure = useCallback((message = 'Authentication failed. Please re-enter your API key.') => {
+    clearApiKey();
+    setApiKeyState(null);
+    setUserInfo(null);
+    setRepos([]);
+    setSelectedRepo(null);
+    setRuns([]);
+    setAuthError(message);
+  }, []);
+
   // Load API key from localStorage on mount
   useEffect(() => {
     const storedKey = getApiKey();
@@ -175,10 +185,7 @@ export default function Home() {
     } catch (err) {
       console.error('Failed to fetch agents:', err);
       if (err instanceof AuthError) {
-        setRuns([]);
-        clearApiKey();
-        setApiKeyState(null);
-        setUserInfo(null);
+        handleAuthFailure();
         setRunsError('Authentication failed. Please re-enter your API key.');
       } else {
         setRunsError(toErrorMessage(err));
@@ -186,7 +193,7 @@ export default function Home() {
     } finally {
       setIsLoadingRuns(false);
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   // Load runs when API key is available
   useEffect(() => {
@@ -320,11 +327,7 @@ export default function Home() {
     } catch (err) {
       console.error('Failed to fetch repos:', err);
       if (err instanceof AuthError) {
-        clearApiKey();
-        setApiKeyState(null);
-        setUserInfo(null);
-        setRepos([]);
-        setSelectedRepo(null);
+        handleAuthFailure();
         setRepoError('Authentication failed. Please re-enter your API key.');
       } else {
         setRepoError(toErrorMessage(err));
@@ -346,7 +349,7 @@ export default function Home() {
     } finally {
       setIsLoadingRepos(false);
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   // Validate and store API key
   const handleValidateKey = async () => {
@@ -426,7 +429,12 @@ export default function Home() {
           // The ConversationView will pick up the new message via polling
         } catch (err) {
           console.error('Failed to send follow-up:', err);
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
           setActionError(toErrorMessage(err));
+        }
         } finally {
           setIsLaunching(false);
         }
@@ -446,7 +454,12 @@ export default function Home() {
       } catch (err) {
         // Follow-up to finished agent failed - launch a continuation agent
         console.log('Follow-up to finished agent failed, launching continuation:', err);
-        setActionError(toErrorMessage(err));
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Fall through to launch a new agent as continuation
       }
       
@@ -499,7 +512,12 @@ export default function Home() {
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch continuation agent:', err);
-        setActionError(toErrorMessage(err));
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Remove the turn we just added since the continuation failed
         setConversationTurns(prev => prev.slice(0, -1));
         setActiveAgentId(null);
@@ -562,7 +580,12 @@ export default function Home() {
         );
       } catch (err) {
         console.error('SDK agent failed:', err);
-        setActionError(toErrorMessage(err));
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         setRuns((prev) => prev.filter((r) => r.id !== tempRunId));
         setSdkStepsMap((prev) => {
           const next = { ...prev };
@@ -590,7 +613,12 @@ export default function Home() {
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch agent:', err);
-        setActionError(toErrorMessage(err));
+        if (err instanceof AuthError) {
+          handleAuthFailure();
+          setActionError('Authentication failed. Please re-enter your API key.');
+        } else {
+          setActionError(toErrorMessage(err));
+        }
         // Reset to null on error so user can try again
         setActiveAgentId(null);
         setActivePrompt('');
@@ -833,6 +861,7 @@ export default function Home() {
               prompt={activePrompt}
               onStatusChange={handleStatusChange}
               onAgentUpdate={handleAgentUpdate}
+              onAuthFailure={() => handleAuthFailure()}
               isSdkMode={activeAgentId.startsWith('sdk-')}
               sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
               preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}

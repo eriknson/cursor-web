@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl } from '@/lib/cursorClient';
+import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError } from '@/lib/cursorClient';
 import { AgentStep } from '@/lib/cursorSdk';
 
 // Initial loading phases shown before first real message arrives
@@ -93,6 +93,7 @@ interface ConversationViewProps {
   prompt: string;
   onStatusChange?: (status: string) => void;
   onAgentUpdate?: (agentId: string, updates: { status?: string; name?: string }) => void;
+  onAuthFailure?: () => void;
   isSdkMode?: boolean;
   sdkSteps?: AgentStep[];
   preloadedData?: { agent: Agent; messages: Message[] };
@@ -481,6 +482,7 @@ export function ConversationView({
   prompt,
   onStatusChange,
   onAgentUpdate,
+  onAuthFailure,
   isSdkMode = false,
   sdkSteps = [],
   preloadedData,
@@ -527,6 +529,12 @@ export function ConversationView({
       gotData = true;
       rateLimitedRef.current = false;
     } catch (err) {
+      if (err instanceof AuthError) {
+        onAuthFailure?.();
+        setError('Authentication failed.');
+        setPollError('Authentication failed.');
+        return false;
+      }
       if (err instanceof Error && err.message.includes('429')) {
         rateLimitedRef.current = true;
       } else if (isInitial) {
@@ -562,6 +570,12 @@ export function ConversationView({
         // Reset rate limit on success
         conversationRateLimitedUntilRef.current = 0;
       } catch (err) {
+        if (err instanceof AuthError) {
+          onAuthFailure?.();
+          setError('Authentication failed.');
+          setPollError('Authentication failed.');
+          return gotData;
+        }
         if (err instanceof Error && (err.message.includes('429') || err.message.includes('Rate limited'))) {
           // Back off for 5 seconds before retrying conversation endpoint
           conversationRateLimitedUntilRef.current = Date.now() + 5000;
@@ -572,7 +586,7 @@ export function ConversationView({
     }
 
     return gotData;
-  }, [agentId, apiKey, onStatusChange, onAgentUpdate]);
+  }, [agentId, apiKey, onStatusChange, onAgentUpdate, onAuthFailure]);
 
   const scheduleNextPoll = useCallback(function scheduleNextPollFn() {
     if (pollingRef.current) clearTimeout(pollingRef.current);
