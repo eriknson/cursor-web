@@ -56,6 +56,18 @@ Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid ke
 
 - DMG packaging requires macOS and will use `dmg-license` (added as optional dependency). On Linux, `npm run package` will fail after build; use macOS to produce the DMG.
 
+### Manual QA checklist (mock mode)
+
+- Launch app via `npm run dev` (mock mode on by default); verify window opens and menu works.
+- Enter any API key value; validation should succeed (mock user email shown).
+- Repos list should show seeded repos; select one.
+- Agents list should show seeded agents with varied statuses.
+- Select an agent: conversation should display seeded messages; follow-ups add new messages.
+- Launch new agent: prompt appears, new mock run is added, and conversation populates.
+- Follow-up on running agent: new user/assistant messages appear; status remains RUNNING.
+- Stop/delete agent: status updates or agent disappears as expected.
+- Close/reopen app: window size/position restored; storage (API key, repo cache, last repo) persists.
+
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
