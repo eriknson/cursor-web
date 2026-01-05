@@ -205,7 +205,7 @@ function SdkStepsView({
         
         {/* Active indicator - shows real status from last step */}
         {isActive && (
-          <div className="shimmer-text text-[14px] md:text-[13px] pt-2">
+          <div className="shimmer-text text-[16px] md:text-[15px] pt-2">
             {statusMessage}
           </div>
         )}
@@ -353,7 +353,7 @@ function CloudAgentStreamView({
 
           {/* Status indicator - shows REAL agent status when active with messages */}
           {needsShimmerIndicator && (
-            <div className="shimmer-text text-[14px] md:text-[13px] pt-2">
+            <div className="shimmer-text text-[16px] md:text-[15px] pt-2">
               {statusMessage}
             </div>
           )}

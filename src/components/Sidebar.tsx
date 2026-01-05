@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Drawer } from 'vaul';
-import { StoredRun } from '@/lib/storage';
+import { Agent } from '@/lib/cursorClient';
 import { CursorLoader } from './CursorLoader';
 
 function UserMenu({ userEmail, onLogout }: { userEmail?: string; onLogout: () => void }) {
@@ -72,8 +72,8 @@ function UserMenu({ userEmail, onLogout }: { userEmail?: string; onLogout: () =>
 }
 
 interface SidebarProps {
-  runs: StoredRun[];
-  onSelectRun: (run: StoredRun) => void;
+  runs: Agent[];
+  onSelectRun: (agent: Agent) => void;
   onNewAgent: () => void;
   onLogout: () => void;
   userEmail?: string;
@@ -97,9 +97,10 @@ function formatRelativeTime(dateStr: string): { time: string; showAgo: boolean }
   return { time: `${diffWeeks}w`, showAgo: true };
 }
 
-function getRepoName(repoUrl: string): string {
-  const match = repoUrl.match(/github\.com\/([^\/]+\/[^\/]+)/);
-  return match ? match[1].split('/')[1] : repoUrl;
+function getRepoName(repository: string): string {
+  // Repository is in format "owner/name"
+  const parts = repository.split('/');
+  return parts.length >= 2 ? parts[1] : repository;
 }
 
 function SidebarContent({
@@ -112,8 +113,8 @@ function SidebarContent({
   setSearchQuery,
   onClose,
 }: {
-  runs: StoredRun[];
-  onSelectRun: (run: StoredRun) => void;
+  runs: Agent[];
+  onSelectRun: (agent: Agent) => void;
   onNewAgent: () => void;
   onLogout: () => void;
   userEmail?: string;
@@ -121,8 +122,8 @@ function SidebarContent({
   setSearchQuery: (query: string) => void;
   onClose?: () => void;
 }) {
-  const handleSelectRun = (run: StoredRun) => {
-    onSelectRun(run);
+  const handleSelectRun = (agent: Agent) => {
+    onSelectRun(agent);
     onClose?.();
   };
 
@@ -132,11 +133,11 @@ function SidebarContent({
   };
 
   // Filter runs based on search query
-  const filteredRuns = runs.filter((run) => {
+  const filteredRuns = runs.filter((agent) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
-    const name = (run.agentName || run.prompt).toLowerCase();
-    const repo = getRepoName(run.repository).toLowerCase();
+    const name = (agent.name || '').toLowerCase();
+    const repo = getRepoName(agent.source.repository).toLowerCase();
     return name.includes(query) || repo.includes(query);
   });
 
@@ -172,22 +173,22 @@ function SidebarContent({
           </div>
         ) : (
           <div className="space-y-0.5">
-            {filteredRuns.map((run) => {
-              const isActive = run.status === 'RUNNING' || run.status === 'CREATING';
+            {filteredRuns.map((agent) => {
+              const isActive = agent.status === 'RUNNING' || agent.status === 'CREATING';
 
               return (
                 <button
-                  key={run.id}
-                  onClick={() => handleSelectRun(run)}
+                  key={agent.id}
+                  onClick={() => handleSelectRun(agent)}
                   className="w-full text-left px-3 py-2.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <span className="text-neutral-200 text-sm truncate block">
-                        {run.agentName || (run.prompt.length > 35 ? run.prompt.slice(0, 35) + '...' : run.prompt)}
+                        {agent.name || 'Agent task'}
                       </span>
                       <span className="text-xs text-neutral-600 truncate block mt-0.5">
-                        {getRepoName(run.repository)}
+                        {getRepoName(agent.source.repository)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -195,7 +196,7 @@ function SidebarContent({
                         <CursorLoader size="sm" className="w-3 h-3" />
                       ) : (
                         <span className="text-xs text-neutral-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {formatRelativeTime(run.createdAt).time}
+                          {formatRelativeTime(agent.createdAt).time}
                         </span>
                       )}
                     </div>

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState';
 import {
   validateApiKey,
   listRepositories,
+  listAgents,
   launchAgent,
   addFollowUp,
   fetchGitHubRepoInfo,
@@ -27,14 +28,9 @@ import {
   clearApiKey,
   getCachedRepos,
   setCachedRepos,
-  getStoredRuns,
-  addStoredRun,
-  updateStoredRun,
-  clearStuckRuns,
   getLastSelectedRepo,
   setLastSelectedRepo,
   CachedRepo,
-  StoredRun,
 } from '@/lib/storage';
 
 export default function Home() {
@@ -51,8 +47,9 @@ export default function Home() {
   const [selectedRepo, setSelectedRepo] = useState<CachedRepo | null>(null);
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
 
-  // Runs state
-  const [runs, setRuns] = useState<StoredRun[]>([]);
+  // Runs state - fetched from Cursor API (source of truth)
+  const [runs, setRuns] = useState<Agent[]>([]);
+  const [isLoadingRuns, setIsLoadingRuns] = useState(true);
   const [isLaunching, setIsLaunching] = useState(false);
 
   // Sidebar state (left side, for mobile drawer)
@@ -98,35 +95,58 @@ export default function Home() {
           console.warn('Validation failed (non-fatal):', err.message);
         });
     }
-    // Clear runs stuck in "building" state from previous sessions
-    clearStuckRuns();
-    setRuns(getStoredRuns());
     // Done checking for stored key
     setIsInitializing(false);
   }, []);
+
+  // Fetch runs from Cursor API (source of truth - syncs across all devices)
+  const fetchRuns = useCallback(async (key: string) => {
+    try {
+      const agents = await listAgents(key, 50);
+      setRuns(agents);
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+    } finally {
+      setIsLoadingRuns(false);
+    }
+  }, []);
+
+  // Load runs when API key is available
+  useEffect(() => {
+    if (apiKey) {
+      setIsLoadingRuns(true);
+      fetchRuns(apiKey);
+    }
+  }, [apiKey, fetchRuns]);
+
+  // Poll for run updates every 30 seconds to keep list synced across devices
+  useEffect(() => {
+    if (!apiKey) return;
+    
+    const interval = setInterval(() => {
+      fetchRuns(apiKey);
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [apiKey, fetchRuns]);
 
   // Preload agent data for recent cloud runs
   useEffect(() => {
     if (!apiKey || runs.length === 0) return;
 
-    // Only preload cloud agents (not SDK agents)
-    const cloudRuns = runs.filter((r) => !r.id.startsWith('sdk-'));
-    // Preload first 5 recent runs
-    const toPreload = cloudRuns.slice(0, 5);
+    // Preload first 5 recent runs (runs are already Agent[] from API)
+    const toPreload = runs.slice(0, 5);
 
-    const preloadAgent = async (runId: string) => {
+    const preloadAgent = async (agent: Agent) => {
       try {
-        const [agent, conversation] = await Promise.all([
-          getAgentStatus(apiKey, runId),
-          getAgentConversation(apiKey, runId),
-        ]);
+        const conversation = await getAgentConversation(apiKey, agent.id);
 
         setAgentCache((prev) => {
           // Skip if already cached (check inside setter to avoid race)
-          if (prev[runId]) return prev;
+          if (prev[agent.id]) return prev;
           return {
             ...prev,
-            [runId]: { agent, messages: conversation.messages || [] },
+            [agent.id]: { agent, messages: conversation.messages || [] },
           };
         });
       } catch {
@@ -135,12 +155,12 @@ export default function Home() {
     };
 
     // Stagger preloads to avoid rate limits
-    toPreload.forEach((run, idx) => {
+    toPreload.forEach((agent, idx) => {
       setTimeout(() => {
         // Check cache before making request
         setAgentCache((prev) => {
-          if (!prev[run.id]) {
-            preloadAgent(run.id);
+          if (!prev[agent.id]) {
+            preloadAgent(agent);
           }
           return prev;
         });
@@ -378,16 +398,8 @@ export default function Home() {
           model,
         });
 
-        const newRun: StoredRun = {
-          id: agent.id,
-          prompt,
-          repository: repoToUse.repository,
-          status: agent.status,
-          createdAt: agent.createdAt,
-          agentUrl: agent.target.url,
-        };
-        addStoredRun(newRun);
-        setRuns([newRun, ...runs.filter((r) => r.id !== agent.id)]);
+        // Optimistically add to local state - API is source of truth, will sync on next poll
+        setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch continuation agent:', err);
@@ -419,18 +431,20 @@ export default function Home() {
 
     if (mode === 'sdk') {
       // SDK mode - use @cursor-ai/january package
+      // Note: SDK runs are local-only and don't sync via Cursor API
       try {
         // Create a temporary run for the SDK session
         const tempRunId = `sdk-${Date.now()}`;
-        const newRun: StoredRun = {
+        // Create a temporary Agent-like object for local display
+        const tempAgent: Agent = {
           id: tempRunId,
-          prompt,
-          repository: selectedRepo.repository,
+          name: prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt,
           status: 'RUNNING',
+          source: { repository: selectedRepo.repository, ref: 'main' },
+          target: { branchName: '', url: '', autoCreatePr: false, openAsCursorGithubApp: false, skipReviewerRequest: false },
           createdAt: new Date().toISOString(),
         };
-        addStoredRun(newRun);
-        setRuns([newRun, ...runs.filter((r) => r.id !== tempRunId)]);
+        setRuns(prev => [tempAgent, ...prev]);
         setActiveAgentId(tempRunId);
         setSdkStepsMap((prev) => ({ ...prev, [tempRunId]: [] }));
 
@@ -447,7 +461,6 @@ export default function Home() {
         }
 
         // Mark as finished
-        updateStoredRun(tempRunId, { status: 'FINISHED' });
         setRuns((prev) =>
           prev.map((r) => (r.id === tempRunId ? { ...r, status: 'FINISHED' } : r))
         );
@@ -470,16 +483,8 @@ export default function Home() {
           model,
         });
 
-        const newRun: StoredRun = {
-          id: agent.id,
-          prompt,
-          repository: selectedRepo.repository,
-          status: agent.status,
-          createdAt: agent.createdAt,
-          agentUrl: agent.target.url,
-        };
-        addStoredRun(newRun);
-        setRuns([newRun, ...runs.filter((r) => r.id !== agent.id)]);
+        // Optimistically add to local state - API is source of truth, will sync on next poll
+        setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
       } catch (err) {
         console.error('Failed to launch agent:', err);
@@ -494,12 +499,13 @@ export default function Home() {
   };
 
   // Handle selecting a previous run from activity drawer
-  const handleSelectRun = (run: StoredRun) => {
-    setActiveAgentId(run.id);
-    setActivePrompt(run.prompt);
-    setActiveAgentStatus(run.status);
-    // Extract repo name from repository URL
-    const repoName = run.repository.split('/').pop() || run.repository;
+  const handleSelectRun = (agent: Agent) => {
+    setActiveAgentId(agent.id);
+    // Use agent name as prompt display (API doesn't return original prompt)
+    setActivePrompt(agent.name || 'Agent task');
+    setActiveAgentStatus(agent.status);
+    // Extract repo name from repository string
+    const repoName = agent.source.repository.split('/').pop() || agent.source.repository;
     setActiveAgentRepo(repoName);
     // Clear conversation history when switching to a different run
     setConversationTurns([]);
@@ -507,16 +513,18 @@ export default function Home() {
   };
 
   // Handle agent data change from conversation view (status, name, etc.)
+  // Updates local state for immediate UI feedback - API is source of truth
   const handleAgentUpdate = (agentId: string, updates: { status?: string; name?: string }) => {
-    const updatesToApply: Partial<StoredRun> = {};
-    if (updates.status) updatesToApply.status = updates.status;
-    if (updates.name) updatesToApply.agentName = updates.name;
-    
-    if (Object.keys(updatesToApply).length > 0) {
-      updateStoredRun(agentId, updatesToApply);
-      setRuns(
-        runs.map((r) =>
-          r.id === agentId ? { ...r, ...updatesToApply } : r
+    if (updates.status || updates.name) {
+      setRuns(prev =>
+        prev.map((agent) =>
+          agent.id === agentId 
+            ? { 
+                ...agent, 
+                ...(updates.status && { status: updates.status as Agent['status'] }),
+                ...(updates.name && { name: updates.name }),
+              } 
+            : agent
         )
       );
     }
@@ -646,7 +654,7 @@ export default function Home() {
         </header>
 
         {/* Main content - conversation or empty state */}
-        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0">
+        <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 pt-16 md:pt-0 keyboard-stable">
           {activeAgentId ? (
             <ConversationView
               agentId={activeAgentId}
@@ -665,10 +673,10 @@ export default function Home() {
           )}
 
           {/* Composer - sticky at bottom with backdrop blur so content scrolls behind */}
-          <div className="mt-auto sticky bottom-0 -mx-4 px-4">
+          <div className="mt-auto sticky bottom-0 -mx-4 px-4 composer-sticky">
             {/* Gradient fade for content scrolling behind */}
             <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-transparent to-black/70 pointer-events-none" />
-            <div className="pt-6 pb-safe bg-black/70 backdrop-blur-xl">
+            <div className="pt-6 pb-safe bg-black/70 backdrop-blur-xl keyboard-stable">
               <Composer
                 onSubmit={handleLaunch}
                 isLoading={isLaunching}

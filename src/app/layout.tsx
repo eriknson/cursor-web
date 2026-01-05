@@ -25,12 +25,13 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    // Apple touch icon for home screen
+    // Apple touch icon for home screen (iOS requires PNG)
     apple: [
-      { url: '/cursor-logo.svg', type: 'image/svg+xml' },
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
     icon: [
-      { url: '/cursor-logo.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
   },
 };

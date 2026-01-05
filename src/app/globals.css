@@ -210,3 +210,69 @@ a:active {
 .overscroll-contain {
   overscroll-behavior: contain;
 }
+
+/* ========================================
+   iOS PWA Scroll & Viewport Optimizations
+   ======================================== */
+
+/* iOS PWA scroll improvements for conversation container */
+[data-scroll-container] {
+  /* Smooth momentum scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+  
+  /* Prevent scroll chaining - keeps scroll within container */
+  overscroll-behavior-y: contain;
+  
+  /* GPU acceleration for smoother scrolling */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Prevent iOS rubber-banding on the root - PWA specific */
+@supports (-webkit-touch-callout: none) {
+  /* iOS-only styles */
+  html {
+    /* Prevent overscroll on the html element */
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+  
+  body {
+    /* Allow body to scroll but contain it */
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+}
+
+/* Main app container scrolling */
+.app-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Prevent zoom on double-tap for interactive elements */
+button, a, input, textarea, select {
+  touch-action: manipulation;
+}
+
+/* Stable positioning for composer on iOS */
+@supports (-webkit-touch-callout: none) {
+  .composer-sticky {
+    /* More stable positioning on iOS when keyboard opens */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+}
+
+/* Prevent layout shift during keyboard open/close */
+.keyboard-stable {
+  /* Prevents content from jumping when virtual keyboard appears */
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}

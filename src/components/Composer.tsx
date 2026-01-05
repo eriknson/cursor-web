@@ -27,27 +27,45 @@ function useKeyboardViewportFix(textareaRef: React.RefObject<HTMLTextAreaElement
       // Force the viewport to recalculate by scrolling
       // This fixes the "stuck content" issue on iOS when keyboard dismisses
       requestAnimationFrame(() => {
-        // Small delay to let the keyboard fully dismiss
+        // Longer delay to let the keyboard fully dismiss on iOS
         setTimeout(() => {
+          // Reset any transforms that might be stuck
+          document.body.style.transform = '';
+          
           // Scroll the window to trigger viewport recalculation
           window.scrollTo(0, 0);
           
           // Find and scroll the conversation container to bottom
           const scrollContainer = document.querySelector('[data-scroll-container]');
           if (scrollContainer) {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            // Use instant scroll to avoid animation conflicts with keyboard
+            scrollContainer.scrollTo({
+              top: scrollContainer.scrollHeight,
+              behavior: 'instant' as ScrollBehavior
+            });
           }
-        }, 50);
+          
+          // Force a reflow to ensure layout is recalculated
+          void document.body.offsetHeight;
+        }, 100); // Slightly longer delay for iOS keyboard animation
       });
     };
     
     const handleFocus = () => {
       wasKeyboardOpen.current = true;
+      // Prevent body scroll when keyboard is open (iOS PWA)
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
     };
     
     const handleBlur = () => {
       if (!wasKeyboardOpen.current) return;
       wasKeyboardOpen.current = false;
+      // Restore body scroll
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
       resetViewport();
     };
     

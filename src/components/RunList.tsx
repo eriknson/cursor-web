@@ -1,11 +1,11 @@
 'use client';
 
-import { StoredRun } from '@/lib/storage';
+import { Agent } from '@/lib/cursorClient';
 import { CursorLoader } from './CursorLoader';
 
 interface RunListProps {
-  runs: StoredRun[];
-  onSelect: (run: StoredRun) => void;
+  runs: Agent[];
+  onSelect: (agent: Agent) => void;
 }
 
 function formatRelativeTime(dateStr: string, status: string): string {
@@ -35,9 +35,10 @@ function formatRelativeTime(dateStr: string, status: string): string {
   return timeStr;
 }
 
-function getRepoName(repoUrl: string): string {
-  const match = repoUrl.match(/github\.com\/([^\/]+\/[^\/]+)/);
-  return match ? match[1].split('/')[1] : repoUrl;
+function getRepoName(repository: string): string {
+  // Repository is in format "owner/name"
+  const parts = repository.split('/');
+  return parts.length >= 2 ? parts[1] : repository;
 }
 
 export function RunList({ runs, onSelect }: RunListProps) {
@@ -47,22 +48,22 @@ export function RunList({ runs, onSelect }: RunListProps) {
 
   return (
     <div className="space-y-1">
-      {runs.map((run) => {
-        const isActive = run.status === 'RUNNING' || run.status === 'CREATING';
+      {runs.map((agent) => {
+        const isActive = agent.status === 'RUNNING' || agent.status === 'CREATING';
         
         return (
           <button
-            key={run.id}
-            onClick={() => onSelect(run)}
+            key={agent.id}
+            onClick={() => onSelect(agent)}
             className="w-full text-left px-2 py-3 hover:bg-zinc-900/50 rounded-lg transition-colors cursor-pointer"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <span className="text-zinc-200 text-[16px] md:text-[15px] truncate block">
-                  {run.agentName || (run.prompt.length > 50 ? run.prompt.slice(0, 50) + '...' : run.prompt)}
+                  {agent.name || 'Agent task'}
                 </span>
                 <div className="flex items-center gap-2 mt-1 text-xs text-zinc-600">
-                  <span>{getRepoName(run.repository)}</span>
+                  <span>{getRepoName(agent.source.repository)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -73,7 +74,7 @@ export function RunList({ runs, onSelect }: RunListProps) {
                   </>
                 ) : (
                   <span className="text-xs text-zinc-600 whitespace-nowrap">
-                    {formatRelativeTime(run.createdAt, run.status)}
+                    {formatRelativeTime(agent.createdAt, agent.status)}
                   </span>
                 )}
               </div>

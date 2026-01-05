@@ -270,7 +270,7 @@ function SdkStepsView({
       ))}
       
       {isActive && (
-        <div className="shimmer-text text-[14px] md:text-[13px] pt-2">
+        <div className="shimmer-text text-[16px] md:text-[15px] pt-2">
           {statusMessage}
         </div>
       )}
@@ -381,7 +381,7 @@ function CloudAgentView({
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <div className="shimmer-text text-[14px] md:text-[13px] pt-2 text-neutral-500">
+        <div className="shimmer-text text-[16px] md:text-[15px] pt-2 text-neutral-500">
           {statusMessage}
         </div>
       )}
@@ -702,7 +702,8 @@ export function ConversationView({
     <div 
       ref={scrollRef}
       data-scroll-container
-      className="flex-1 overflow-y-auto flex flex-col overscroll-contain"
+      className="flex-1 overflow-y-auto flex flex-col overscroll-contain keyboard-stable"
+      style={{ WebkitOverflowScrolling: 'touch' }}
     >
       <div className="flex-1" />
       <div className="py-6 space-y-2">
