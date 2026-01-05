@@ -2,14 +2,21 @@
   "name": "cursor-web",
   "version": "0.1.0",
   "private": true,
+  "main": "dist/main.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:build\" \"npm:dev:electron\"",
+    "dev:renderer": "vite dev --host --port 5173 --clearScreen false",
+    "dev:build": "VITE_DEV_SERVER_URL=http://localhost:5173 esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist --external:electron --sourcemap --watch",
+    "dev:electron": "wait-on dist/main.js http://localhost:5173 && nodemon --watch dist/main.js --watch dist/preload.js --exec \"electron dist/main.js\"",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist --external:electron --sourcemap",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"electron/**/*.{ts,tsx}\"",
+    "package": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "@cursor-ai/january": "^0.2.1",
+    "electron-store": "^11.0.2",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -20,9 +27,35 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.2",
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.27.2",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "nodemon": "^3.1.11",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^7.3.0",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "com.cursor.desktop",
+    "productName": "Cursor",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "resources"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "public/icon-512.png"
+    }
   }
 }

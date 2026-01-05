@@ -3,6 +3,8 @@
 :root {
   --background: #000000;
   --foreground: #fafafa;
+  --font-geist-sans: "SF Pro Text", "Inter", system-ui, -apple-system, sans-serif;
+  --font-geist-mono: "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", monospace;
 }
 
 @theme inline {
