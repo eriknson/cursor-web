@@ -3,6 +3,7 @@
 
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
 const USE_MOCK = import.meta.env.VITE_MOCK_CURSOR_API === 'true' || !import.meta.env.VITE_MOCK_CURSOR_API;
+const MOCK_LATENCY_MS = Number(import.meta.env.VITE_MOCK_LATENCY_MS ?? 200);
 
 function getUrl(path: string): string {
   return `${CURSOR_API_BASE}${path}`;
@@ -121,7 +122,7 @@ export interface FollowUpParams {
 }
 
 // API functions
-async function mockDelay(ms = 200): Promise<void> {
+async function mockDelay(ms = MOCK_LATENCY_MS): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
