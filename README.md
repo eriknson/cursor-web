@@ -74,6 +74,20 @@ Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid ke
 - SDK mode is disabled/stubbed; cloud mode only.
 - Mock mode is default in dev; set `VITE_MOCK_CURSOR_API=false` to hit real API (requires valid key).
 
+### Quick start (mock mode)
+
+- `npm install`
+- `npm run dev` (mock data, no real key needed)
+- Enter any API key string to unlock UI; exercise repos/agents/follow-ups.
+
+### Switch to real API
+
+- Create `.env` with:
+  ```
+  VITE_MOCK_CURSOR_API=false
+  ```
+- Run `npm run dev` and enter your real Cursor API key.
+
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
