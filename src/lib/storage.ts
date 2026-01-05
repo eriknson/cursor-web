@@ -33,16 +33,31 @@ const memoryStorage = (() => {
   };
 })();
 
-function getStorage(): SafeStorage {
-  if (typeof window === 'undefined') return memoryStorage;
+type StorageDetection = {
+  store: SafeStorage;
+  persistent: boolean;
+};
+
+function detectStorage(): StorageDetection {
+  if (typeof window === 'undefined') return { store: memoryStorage, persistent: false };
   try {
     const testKey = '__cursor_storage_test__';
     window.localStorage.setItem(testKey, 'ok');
     window.localStorage.removeItem(testKey);
-    return window.localStorage;
+    return { store: window.localStorage, persistent: true };
   } catch {
-    return memoryStorage;
+    return { store: memoryStorage, persistent: false };
   }
+}
+
+const storageDetection = detectStorage();
+
+function getStorage(): SafeStorage {
+  return storageDetection.store;
+}
+
+export function isPersistentStorage(): boolean {
+  return storageDetection.persistent;
 }
 
 function safeGetItem(key: string): string | null {

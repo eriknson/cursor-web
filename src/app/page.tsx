@@ -30,16 +30,21 @@ import {
   getLastSelectedRepo,
   setLastSelectedRepo,
   CachedRepo,
+  isPersistentStorage,
 } from '@/lib/storage';
 
 function Banner({
   message,
   tone = 'warning',
   onClose,
+  actionLabel,
+  onAction,
 }: {
   message: string;
   tone?: 'warning' | 'error' | 'info';
   onClose?: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   const toneClasses =
     tone === 'error'
@@ -52,6 +57,14 @@ function Banner({
     <div className={`flex items-start gap-3 px-3 py-2 border rounded-lg text-sm ${toneClasses}`}>
       <span className="pt-0.5">⚠️</span>
       <div className="flex-1">{message}</div>
+      {onAction && actionLabel && (
+        <button
+          onClick={onAction}
+          className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+        >
+          {actionLabel}
+        </button>
+      )}
       {onClose && (
         <button
           onClick={onClose}
@@ -120,6 +133,7 @@ export default function Home() {
   const [repoError, setRepoError] = useState<string | null>(null);
   const [runsError, setRunsError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState(false);
 
   const isMockMode = process.env.NEXT_PUBLIC_MOCK_API === 'true';
 
@@ -144,6 +158,12 @@ export default function Home() {
     }
     // Done checking for stored key
     setIsInitializing(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isPersistentStorage()) {
+      setStorageWarning(true);
+    }
   }, []);
 
   // Fetch runs from Cursor API (source of truth - syncs across all devices)
@@ -298,6 +318,7 @@ export default function Home() {
         if (staleCache && staleCache.length > 0) {
           console.warn('Rate limited, using stale cache');
           setRepos(staleCache);
+          setRepoError('Rate limited; showing cached repositories');
           return;
         }
       }
@@ -562,6 +583,19 @@ export default function Home() {
     }
   };
 
+  const handleRefreshRuns = () => {
+    if (!apiKey) return;
+    setIsLoadingRuns(true);
+    setRunsError(null);
+    fetchRuns(apiKey);
+  };
+
+  const handleRefreshRepos = () => {
+    if (!apiKey) return;
+    setRepoError(null);
+    fetchRepos(apiKey);
+  };
+
   // Handle selecting a previous run from activity drawer
   const handleSelectRun = (agent: Agent) => {
     setActiveAgentId(agent.id);
@@ -735,6 +769,13 @@ export default function Home() {
                 onClose={() => null}
               />
             )}
+            {storageWarning && (
+              <Banner
+                tone="warning"
+                message="Persistent storage is unavailable. Data will not be saved across sessions."
+                onClose={() => setStorageWarning(false)}
+              />
+            )}
             {isLoadingRuns && (
               <div className="text-xs text-neutral-600 flex items-center gap-2">
                 <CursorLoader size="sm" />
@@ -746,6 +787,8 @@ export default function Home() {
                 tone="warning"
                 message={`Repositories: ${repoError}`}
                 onClose={() => setRepoError(null)}
+                actionLabel="Retry"
+                onAction={handleRefreshRepos}
               />
             )}
             {runsError && (
@@ -753,6 +796,8 @@ export default function Home() {
                 tone="warning"
                 message={`Runs: ${runsError}`}
                 onClose={() => setRunsError(null)}
+                actionLabel="Retry"
+                onAction={handleRefreshRuns}
               />
             )}
             {actionError && (
