@@ -499,6 +499,7 @@ export function ConversationView({
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
   const latestAgentRef = useRef<Agent | null>(null);
+  const fetchInFlightRef = useRef(false);
   
   const pollCountRef = useRef(0);
   const rateLimitedRef = useRef(false);
@@ -512,6 +513,8 @@ export function ConversationView({
 
   const fetchAll = useCallback(async (isInitial = false, forceConversation = false): Promise<boolean> => {
     if (!agentId || !apiKey || agentId.startsWith('sdk-')) return false;
+    if (fetchInFlightRef.current) return false;
+    fetchInFlightRef.current = true;
     
     let gotData = false;
     
@@ -585,6 +588,7 @@ export function ConversationView({
       }
     }
 
+    fetchInFlightRef.current = false;
     return gotData;
   }, [agentId, apiKey, onStatusChange, onAgentUpdate, onAuthFailure]);
 
@@ -600,6 +604,8 @@ export function ConversationView({
       // This covers the typical "thinking" phase before first response
       interval = INITIAL_POLL_INTERVAL;
     }
+    const jitter = Math.random() * 200 - 100;
+    interval = Math.max(500, interval + jitter);
     
     pollingRef.current = setTimeout(async () => {
       const agentIdToCheck = currentAgentIdRef.current;
