@@ -1,16 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Toaster } from 'sonner';
 import './globals.css';
-
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
 
 export const metadata: Metadata = {
   title: 'Cursor Cloud Agents',
@@ -41,8 +31,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  // Theme color for Safari browser chrome - pure black to match the app
-  themeColor: '#000000',
+  // Theme color for Safari browser chrome - matches dark theme bg
+  themeColor: '#14120B',
   // Tell the browser this is a dark-mode site
   colorScheme: 'dark',
   // Extend viewport into notch/home indicator areas on iOS
@@ -57,9 +47,24 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-black text-zinc-100`}
+        className="font-sans antialiased"
+        style={{
+          background: 'var(--color-theme-bg)',
+          color: 'var(--color-theme-fg)',
+        }}
       >
         {children}
+        <Toaster
+          theme="dark"
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: 'var(--color-theme-bg-card)',
+              border: '1px solid var(--color-theme-border-primary)',
+              color: 'var(--color-theme-fg)',
+            },
+          }}
+        />
       </body>
     </html>
   );

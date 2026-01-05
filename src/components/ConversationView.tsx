@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl } from '@/lib/cursorClient';
+import { toast } from 'sonner';
+import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError } from '@/lib/cursorClient';
 import { AgentStep } from '@/lib/cursorSdk';
+import { CursorLoader } from '@/components/CursorLoader';
+import { ShimmerText } from '@/components/ShimmerText';
+import { theme } from '@/lib/theme';
 
 // Initial loading phases shown before first real message arrives
 const INITIAL_PHASES = [
@@ -14,13 +18,11 @@ const INITIAL_PHASES = [
 // Hook to track initial loading phase before agent has real messages
 function useInitialLoadingPhase(isActive: boolean, hasMessages: boolean): string | null {
   const [phase, setPhase] = useState(0);
-  const startTimeRef = useRef<number>(Date.now());
   
   useEffect(() => {
     if (!isActive || hasMessages) {
       // Reset when inactive or when we have messages
       setPhase(0);
-      startTimeRef.current = Date.now();
       return;
     }
     
@@ -76,6 +78,8 @@ function getAgentStatusMessage(agent: Agent | null, isPending: boolean): string 
       return 'Stopped';
     case 'ERROR':
       return 'Error occurred';
+    case 'EXPIRED':
+      return 'Expired';
     default:
       return 'Processing';
   }
@@ -94,6 +98,7 @@ interface ConversationViewProps {
   prompt: string;
   onStatusChange?: (status: string) => void;
   onAgentUpdate?: (agentId: string, updates: { status?: string; name?: string }) => void;
+  onAuthFailure?: () => void;
   isSdkMode?: boolean;
   sdkSteps?: AgentStep[];
   preloadedData?: { agent: Agent; messages: Message[] };
@@ -101,6 +106,8 @@ interface ConversationViewProps {
   previousTurns?: ConversationTurn[];
   // Counter that triggers a refetch when incremented (for follow-ups to finished agents)
   refreshTrigger?: number;
+  // Initial status hint - used to show appropriate loading UI for past agents
+  initialStatus?: string;
 }
 
 const INITIAL_POLL_INTERVAL = 1000;
@@ -128,7 +135,8 @@ function renderWithCodeTags(text: string) {
       return (
         <code 
           key={i} 
-          className="px-1.5 py-0.5 bg-white/5 rounded text-inherit font-mono text-[0.9em]"
+          className="px-1.5 py-0.5 rounded text-inherit font-mono text-[0.9em]"
+          style={{ background: 'var(--color-theme-bg-tertiary)' }}
         >
           {code}
         </code>
@@ -179,14 +187,20 @@ function StepItem({ step }: { step: AgentStep }) {
   switch (step.type) {
     case 'text':
       return (
-        <div className="text-white text-[16px] md:text-[15px] leading-tight whitespace-pre-wrap">
+        <div 
+          className="text-[16px] md:text-[15px] leading-tight whitespace-pre-wrap"
+          style={{ color: theme.text.primary }}
+        >
           {renderWithCodeTags(step.content)}
         </div>
       );
 
     case 'thinking':
       return (
-        <div className="text-neutral-500 leading-relaxed italic text-xs border-l-2 border-neutral-800 pl-3">
+        <div 
+          className="leading-relaxed italic text-xs border-l-2 pl-3"
+          style={{ color: theme.text.tertiary, borderColor: theme.border.secondary }}
+        >
           {step.content}
         </div>
       );
@@ -195,7 +209,7 @@ function StepItem({ step }: { step: AgentStep }) {
       return (
         <div className="flex items-start gap-2 font-mono text-xs py-1">
           <span className="text-amber-500 mt-0.5">▶</span>
-          <span className="text-neutral-400">{step.content}</span>
+          <span style={{ color: theme.text.secondary }}>{step.content}</span>
         </div>
       );
 
@@ -203,20 +217,29 @@ function StepItem({ step }: { step: AgentStep }) {
       return (
         <div className="flex items-start gap-2 font-mono text-xs py-0.5">
           <span className="text-green-500 mt-0.5">✓</span>
-          <span className="text-neutral-500">{step.content}</span>
+          <span style={{ color: theme.text.tertiary }}>{step.content}</span>
         </div>
       );
 
     case 'tool_output':
       return (
-        <div className="font-mono text-xs text-neutral-600 bg-neutral-900 rounded px-2 py-1 overflow-x-auto max-h-32 overflow-y-auto">
+        <div 
+          className="font-mono text-xs rounded px-2 py-1 overflow-x-auto max-h-32 overflow-y-auto"
+          style={{ 
+            color: theme.text.tertiary,
+            background: theme.bg.card,
+          }}
+        >
           <pre className="whitespace-pre-wrap">{step.content}</pre>
         </div>
       );
 
     case 'user_message':
       return (
-        <div className="text-neutral-500 text-[16px] md:text-[15px] leading-relaxed">
+        <div 
+          className="text-[16px] md:text-[15px] leading-relaxed"
+          style={{ color: theme.text.tertiary }}
+        >
           {step.content}
         </div>
       );
@@ -257,9 +280,9 @@ function SdkStepsView({
 
   if (steps.length === 0) {
     return (
-      <div className="shimmer-text text-[16px] md:text-[15px]">
+      <ShimmerText className="text-[16px] md:text-[15px]">
         Starting
-      </div>
+      </ShimmerText>
     );
   }
 
@@ -270,9 +293,9 @@ function SdkStepsView({
       ))}
       
       {isActive && (
-        <div className="shimmer-text text-[16px] md:text-[15px] pt-2">
+        <ShimmerText className="text-[16px] md:text-[15px] pt-2 block">
           {statusMessage}
-        </div>
+        </ShimmerText>
       )}
     </div>
   );
@@ -346,8 +369,14 @@ function CloudAgentView({
           // User follow-up message - styled like the initial prompt
           return (
             <div key={msg.id} className="flex justify-end pt-4">
-              <div className="bg-neutral-900 rounded-2xl px-4 py-3 max-w-[85%]">
-                <p className="text-white text-[16px] md:text-[15px] leading-relaxed">
+              <div 
+                className="rounded-2xl px-4 py-3 max-w-[85%]"
+                style={{ background: 'var(--color-theme-bg-card)' }}
+              >
+                <p 
+                  className="text-[16px] md:text-[15px] leading-relaxed"
+                  style={{ color: 'var(--color-theme-fg)' }}
+                >
                   {msg.text}
                 </p>
               </div>
@@ -361,11 +390,10 @@ function CloudAgentView({
             key={msg.id} 
             className={`relative text-[16px] md:text-[15px] leading-relaxed whitespace-pre-wrap transition-colors ${
               isAfterUser ? 'pt-3' : 'pt-1'
-            } ${
-              isActiveMessage 
-                ? 'text-white shimmer-active' 
-                : 'text-neutral-400'
-            }`}
+            } ${isActiveMessage ? 'shimmer-active' : ''}`}
+            style={{ 
+              color: isActiveMessage ? theme.text.primary : theme.text.secondary 
+            }}
           >
             {renderWithCodeTags(msg.text)}
           </div>
@@ -374,21 +402,24 @@ function CloudAgentView({
 
       {/* Status indicator - shows REAL agent status/name */}
       {showThinking && (
-        <div className="shimmer-text text-[16px] md:text-[15px] pt-1">
+        <ShimmerText className="text-[16px] md:text-[15px] pt-1 block">
           {statusMessage}
-        </div>
+        </ShimmerText>
       )}
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <div className="shimmer-text text-[16px] md:text-[15px] pt-2 text-neutral-500">
+        <ShimmerText className="text-[16px] md:text-[15px] pt-2 block">
           {statusMessage}
-        </div>
+        </ShimmerText>
       )}
 
       {/* Summary - only show when finished */}
       {agent?.summary && !isActive && (
-        <div className="text-white text-[16px] md:text-[15px] leading-relaxed pt-1">
+        <div 
+          className="text-[16px] md:text-[15px] leading-relaxed pt-1"
+          style={{ color: theme.text.primary }}
+        >
           {renderWithCodeTags(agent.summary)}
         </div>
       )}
@@ -417,62 +448,59 @@ function formatTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-// Commit confirmation component - minimal design with just View Commit button
+// Extract repo name from repository string (e.g., "github.com/owner/repo" -> "owner/repo")
+function extractRepoName(repo: string): string {
+  const parts = repo.split('/');
+  if (parts.length >= 3 && parts[0] === 'github.com') {
+    return `${parts[1]}/${parts[2]}`;
+  }
+  if (parts.length >= 2) {
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+  }
+  return parts[parts.length - 1] || repo;
+}
+
+// Commit confirmation component - subtle design with arrow pointing to status
 function CommitConfirmation({ agent }: { agent: Agent }) {
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
   const timeAgo = agent.createdAt ? formatTimeAgo(agent.createdAt) : '';
+  const repoName = extractRepoName(agent.source.repository);
+  const branchName = agent.target.branchName;
+  
+  // Format status message - just owner/repo
+  const statusMessage = `Committed to ${repoName} ${timeAgo}`;
+  
+  // Use the best available URL (PR > commits > Cursor URL)
+  const linkUrl = agent.target.prUrl || githubCommitsUrl || agent.target.url;
   
   return (
-    <div className="mt-4 pt-4 border-t border-neutral-800/50">
-      <div className="flex items-center gap-3 text-xs">
-        {/* PR link - show if available */}
-        {agent.target.prUrl && (
-          <a
-            href={agent.target.prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 text-neutral-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"/>
-            </svg>
-            View Pull Request
-          </a>
-        )}
-        
-        {/* View Commit button */}
-        {githubCommitsUrl && (
-          <a
-            href={githubCommitsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 text-neutral-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/>
-            </svg>
-            View Commit
-          </a>
-        )}
-        
-        {/* Cursor app link as fallback */}
-        {agent.target.url && !agent.target.prUrl && !githubCommitsUrl && (
-          <a
-            href={agent.target.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 bg-white/5 text-neutral-400 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
-          >
-            Open in Cursor
-          </a>
-        )}
-        
-        {/* Time ago - muted text */}
-        {timeAgo && (
-          <span className="text-neutral-500">{timeAgo}</span>
-        )}
-      </div>
+    <div className="pt-2 flex items-start gap-1.5">
+      {/* Small arrow pointing down-right */}
+      <span className="text-xs" style={{ color: theme.text.tertiary }}>↘</span>
+      
+      {/* Status message - subtle and clickable */}
+      {linkUrl ? (
+        <a
+          href={linkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs transition-colors hover:opacity-80"
+          style={{ color: theme.text.tertiary }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = theme.text.secondary;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = theme.text.tertiary;
+          }}
+        >
+          {statusMessage}
+        </a>
+      ) : (
+        <span className="text-xs" style={{ color: theme.text.tertiary }}>
+          {statusMessage}
+        </span>
+      )}
     </div>
   );
 }
@@ -483,11 +511,13 @@ export function ConversationView({
   prompt,
   onStatusChange,
   onAgentUpdate,
+  onAuthFailure,
   isSdkMode = false,
   sdkSteps = [],
   preloadedData,
   previousTurns = [],
   refreshTrigger = 0,
+  initialStatus,
 }: ConversationViewProps) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -497,19 +527,37 @@ export function ConversationView({
   const messageIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
+  const fetchInFlightRef = useRef(false);
+  const latestAgentRef = useRef<Agent | null>(null);
   
   const pollCountRef = useRef(0);
   const rateLimitedRef = useRef(false);
   const conversationRateLimitedUntilRef = useRef(0); // Timestamp when to retry conversation
   
+  // Stable refs for callbacks to avoid polling instability when parent re-renders
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onAgentUpdateRef = useRef(onAgentUpdate);
+  const onAuthFailureRef = useRef(onAuthFailure);
+  
+  // Keep refs in sync with props
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+    onAgentUpdateRef.current = onAgentUpdate;
+    onAuthFailureRef.current = onAuthFailure;
+  }, [onStatusChange, onAgentUpdate, onAuthFailure]);
+  
   // Handle "pending" state - when user just submitted but we don't have an agent ID yet
   const isPending = agentId === 'pending';
 
-  const isTerminal = agent?.status === 'FINISHED' || agent?.status === 'ERROR' || agent?.status === 'STOPPED';
+  const isTerminal = agent?.status === 'FINISHED' || agent?.status === 'ERROR' || agent?.status === 'STOPPED' || agent?.status === 'EXPIRED';
   const isActive = agent?.status === 'RUNNING' || agent?.status === 'CREATING' || isPending;
 
   const fetchAll = useCallback(async (isInitial = false, forceConversation = false): Promise<boolean> => {
     if (!agentId || !apiKey || agentId.startsWith('sdk-')) return false;
+    if (fetchInFlightRef.current) return false;
+    
+    fetchInFlightRef.current = true;
+    const release = () => { fetchInFlightRef.current = false; };
     
     let gotData = false;
     
@@ -517,18 +565,28 @@ export function ConversationView({
     try {
       const status = await getAgentStatus(apiKey, agentId);
       setAgent(status);
+      latestAgentRef.current = status;
       setError(null);
-      onStatusChange?.(status.status);
+      onStatusChangeRef.current?.(status.status);
       if (agentId) {
-        onAgentUpdate?.(agentId, { status: status.status, name: status.name });
+        onAgentUpdateRef.current?.(agentId, { status: status.status, name: status.name });
       }
       gotData = true;
       rateLimitedRef.current = false;
     } catch (err) {
-      if (err instanceof Error && err.message.includes('429')) {
+      if (err instanceof AuthError) {
+        onAuthFailureRef.current?.();
+        setError('Authentication failed');
+        toast.error('Session expired. Please re-enter your API key.');
+        release();
+        return false;
+      }
+      if (err instanceof RateLimitError) {
         rateLimitedRef.current = true;
+        toast.warning('Rate limited - slowing down requests');
       } else if (isInitial) {
         setError('Failed to load agent');
+        toast.error('Failed to load agent data');
       }
     }
 
@@ -557,17 +615,24 @@ export function ConversationView({
         // Reset rate limit on success
         conversationRateLimitedUntilRef.current = 0;
       } catch (err) {
-        if (err instanceof Error && (err.message.includes('429') || err.message.includes('Rate limited'))) {
+        if (err instanceof AuthError) {
+          onAuthFailureRef.current?.();
+          setError('Authentication failed');
+          release();
+          return gotData;
+        }
+        if (err instanceof RateLimitError || (err instanceof Error && err.message.includes('429'))) {
           // Back off for 5 seconds before retrying conversation endpoint
           conversationRateLimitedUntilRef.current = Date.now() + 5000;
         }
       }
     }
 
+    release();
     return gotData;
-  }, [agentId, apiKey, onStatusChange, onAgentUpdate]);
+  }, [agentId, apiKey]);
 
-  const scheduleNextPoll = useCallback(() => {
+  const scheduleNextPoll = useCallback(function scheduleNextPollFn() {
     if (pollingRef.current) clearTimeout(pollingRef.current);
     
     let interval = NORMAL_POLL_INTERVAL;
@@ -580,6 +645,10 @@ export function ConversationView({
       interval = INITIAL_POLL_INTERVAL;
     }
     
+    // Add jitter to avoid thundering herd
+    const jitter = Math.random() * 200 - 100;
+    interval = Math.max(500, interval + jitter);
+    
     pollingRef.current = setTimeout(async () => {
       const agentIdToCheck = currentAgentIdRef.current;
       if (!agentIdToCheck || agentIdToCheck === 'pending') return;
@@ -587,12 +656,12 @@ export function ConversationView({
       pollCountRef.current++;
       await fetchAll();
       
-      // Check terminal state using the agent we already fetched
-      // We stored it in state during fetchAll
-      const currentStatus = await getAgentStatus(apiKey, agentIdToCheck).catch(() => null);
-      const terminal = currentStatus?.status === 'FINISHED' || 
-                      currentStatus?.status === 'ERROR' || 
-                      currentStatus?.status === 'STOPPED';
+      // Check terminal state using the cached agent from fetchAll
+      const currentStatus = latestAgentRef.current?.status;
+      const terminal = currentStatus === 'FINISHED' || 
+                      currentStatus === 'ERROR' || 
+                      currentStatus === 'STOPPED' ||
+                      currentStatus === 'EXPIRED';
       
       // Only stop polling if we successfully got a terminal status
       if (terminal) {
@@ -610,10 +679,10 @@ export function ConversationView({
       
       // Continue polling if agent is still current
       if (currentAgentIdRef.current === agentIdToCheck) {
-        scheduleNextPoll();
+        scheduleNextPollFn();
       }
     }, interval);
-  }, [fetchAll, apiKey]);
+  }, [fetchAll]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -654,7 +723,7 @@ export function ConversationView({
         setMessages(preloadedData.messages);
         messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
         setIsLoading(false);
-        onStatusChange?.(preloadedData.agent.status);
+        onStatusChangeRef.current?.(preloadedData.agent.status);
         
         const isActiveAgent = preloadedData.agent.status === 'RUNNING' || preloadedData.agent.status === 'CREATING';
         if (isActiveAgent) {
@@ -673,7 +742,7 @@ export function ConversationView({
     }
 
     return stopPolling;
-  }, [agentId, fetchAll, scheduleNextPoll, stopPolling, preloadedData, onStatusChange]);
+  }, [agentId, fetchAll, scheduleNextPoll, stopPolling, preloadedData]);
 
   useEffect(() => {
     if (isTerminal) {
@@ -705,15 +774,21 @@ export function ConversationView({
       className="flex-1 overflow-y-auto flex flex-col"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
-      <div className="flex-1" />
-      <div className="py-6 space-y-2">
+      {/* Conversation content with consistent padding */}
+      <div className="pt-16 pb-4 space-y-3 px-4">
         {/* Previous conversation turns - show history from continuation chain */}
         {previousTurns.map((turn, turnIdx) => (
           <div key={`turn-${turnIdx}`} className="space-y-2">
             {/* Previous user prompt */}
             <div className="flex justify-end">
-              <div className="bg-neutral-900 rounded-2xl px-4 py-3 max-w-[85%]">
-                <p className="text-white text-[16px] md:text-[15px] leading-relaxed">
+              <div 
+                className="rounded-2xl px-4 py-3 max-w-[85%]"
+                style={{ background: 'var(--color-theme-bg-card)' }}
+              >
+                <p 
+                  className="text-[16px] md:text-[15px] leading-relaxed"
+                  style={{ color: 'var(--color-theme-fg)' }}
+                >
                   {turn.prompt}
                 </p>
               </div>
@@ -724,7 +799,8 @@ export function ConversationView({
               {turn.messages.filter(m => m.type === 'assistant_message').map((msg) => (
                 <div 
                   key={msg.id} 
-                  className="text-neutral-500 text-[16px] md:text-[15px] leading-relaxed whitespace-pre-wrap pt-1"
+                  className="text-[16px] md:text-[15px] leading-relaxed whitespace-pre-wrap pt-1"
+                  style={{ color: theme.text.tertiary }}
                 >
                   {renderWithCodeTags(msg.text)}
                 </div>
@@ -732,7 +808,10 @@ export function ConversationView({
               
               {/* Previous turn summary */}
               {turn.summary && (
-                <div className="text-neutral-500 text-[16px] md:text-[15px] leading-relaxed pt-1">
+                <div 
+                  className="text-[16px] md:text-[15px] leading-relaxed pt-1"
+                  style={{ color: theme.text.tertiary }}
+                >
                   {renderWithCodeTags(turn.summary)}
                 </div>
               )}
@@ -742,8 +821,14 @@ export function ConversationView({
         
         {/* Current user prompt - right aligned, contained */}
         <div className="flex justify-end">
-          <div className="bg-neutral-900 rounded-2xl px-4 py-3 max-w-[85%]">
-            <p className="text-white text-[16px] md:text-[15px] leading-relaxed">
+          <div 
+            className="rounded-2xl px-4 py-3 max-w-[85%]"
+            style={{ background: 'var(--color-theme-bg-card)' }}
+          >
+            <p 
+              className="text-[16px] md:text-[15px] leading-relaxed"
+              style={{ color: 'var(--color-theme-fg)' }}
+            >
               {prompt}
             </p>
           </div>
@@ -754,18 +839,26 @@ export function ConversationView({
           {isSdkMode ? (
             <SdkStepsView steps={sdkSteps} scrollRef={scrollRef} />
           ) : error ? (
-            <div className="text-neutral-500">
+            <div style={{ color: theme.text.tertiary }}>
               {error}
             </div>
           ) : isPending ? (
             // Pending state - just show thinking while we wait for agent ID
-            <div className="shimmer-text text-[16px] md:text-[15px]">
+            <ShimmerText className="text-[16px] md:text-[15px]">
               Thinking
-            </div>
+            </ShimmerText>
           ) : isLoading ? (
-            <div className="shimmer-text text-[16px] md:text-[15px]">
-              Thinking
-            </div>
+            // Check if loading a past/terminal agent - show logo animation
+            // For running agents, show shimmer text instead
+            initialStatus === 'FINISHED' || initialStatus === 'STOPPED' || initialStatus === 'ERROR' || initialStatus === 'EXPIRED' ? (
+              <div className="flex items-center justify-center py-8">
+                <CursorLoader size="lg" />
+              </div>
+            ) : (
+              <ShimmerText className="text-[16px] md:text-[15px]">
+                Thinking
+              </ShimmerText>
+            )
           ) : (
             <CloudAgentView
               agent={agent}

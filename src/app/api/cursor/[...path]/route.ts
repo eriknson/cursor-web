@@ -5,27 +5,20 @@ const CURSOR_API_BASE = 'https://api.cursor.com/v0';
 // Proxy route to forward requests to Cursor API
 // This avoids CORS issues when calling from the browser
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  const { path } = await params;
+type RouteContext = { params: Promise<{ path: string[] }> };
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const { path } = await context.params;
   return proxyRequest(request, path, 'GET');
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  const { path } = await params;
+export async function POST(request: NextRequest, context: RouteContext) {
+  const { path } = await context.params;
   return proxyRequest(request, path, 'POST');
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
-) {
-  const { path } = await params;
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const { path } = await context.params;
   return proxyRequest(request, path, 'DELETE');
 }
 

@@ -18,6 +18,7 @@ export type AgentStepType =
   | 'step_complete'
   | 'user_message'
   | 'error'
+  | 'warning'
   | 'done';
 
 export interface AgentStep {
@@ -29,6 +30,11 @@ export interface AgentStep {
   toolArgs?: Record<string, unknown>;
   isStreaming?: boolean;
 }
+
+// Idle warning threshold - surface warning after this many seconds of no data
+const IDLE_WARNING_THRESHOLD_MS = 45000;
+// Check interval for idle detection
+const IDLE_CHECK_INTERVAL_MS = 5000;
 
 // Submit a prompt and stream the response from the SDK agent
 export async function* streamSdkAgent(
@@ -51,9 +57,9 @@ export async function* streamSdkAgent(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const message = errorData.error || 'Failed to start SDK agent';
+    const errorMessage = errorData.error || 'Failed to start SDK agent';
     const details = errorData.details ? `\n${errorData.details}` : '';
-    throw new Error(`${message}${details}`);
+    throw new Error(`${errorMessage}${details}`);
   }
 
   const reader = response.body?.getReader();
@@ -63,41 +69,76 @@ export async function* streamSdkAgent(
 
   const decoder = new TextDecoder();
   let buffer = '';
+  let lastActivityTime = Date.now();
+  let idleWarningEmitted = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  // Async generator to yield steps
+  const stepQueue: AgentStep[] = [];
+  let resolveStep: (() => void) | null = null;
+  let streamEnded = false;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n\n');
-    buffer = lines.pop() || '';
+  // Idle checker - emits warning if no activity for a while
+  const idleChecker = setInterval(() => {
+    const idleTime = Date.now() - lastActivityTime;
+    if (idleTime > IDLE_WARNING_THRESHOLD_MS && !idleWarningEmitted && !streamEnded) {
+      idleWarningEmitted = true;
+      stepQueue.push({
+        type: 'warning',
+        content: `Agent has been thinking for ${Math.floor(idleTime / 1000)}s - this is normal for complex tasks`,
+        timestamp: new Date(),
+      });
+      if (resolveStep) {
+        resolveStep();
+        resolveStep = null;
+      }
+    }
+  }, IDLE_CHECK_INTERVAL_MS);
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        try {
-          const update = JSON.parse(data) as Record<string, unknown>;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        streamEnded = true;
+        break;
+      }
 
-          if (update.type === 'done') {
-            return;
+      lastActivityTime = Date.now();
+      idleWarningEmitted = false; // Reset warning on activity
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          try {
+            const update = JSON.parse(data) as Record<string, unknown>;
+
+            if (update.type === 'done') {
+              streamEnded = true;
+              return;
+            }
+
+            if (update.type === 'error') {
+              throw new Error(update.error as string);
+            }
+
+            // Parse the update into an AgentStep
+            const step = parseUpdate(update);
+            if (step) {
+              yield step;
+            }
+          } catch (e) {
+            // Skip malformed JSON
+            if (e instanceof SyntaxError) continue;
+            throw e;
           }
-
-          if (update.type === 'error') {
-            throw new Error(update.error as string);
-          }
-
-          // Parse the update into an AgentStep
-          const step = parseUpdate(update);
-          if (step) {
-            yield step;
-          }
-        } catch (e) {
-          // Skip malformed JSON
-          if (e instanceof SyntaxError) continue;
-          throw e;
         }
       }
     }
+  } finally {
+    clearInterval(idleChecker);
   }
 }
 

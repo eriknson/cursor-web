@@ -1,15 +1,141 @@
 @import "tailwindcss";
 
+/* =============================================================================
+   CURSOR CLOUD AGENTS - COLOR THEME SPEC
+   ============================================================================= */
+
+/* LIGHT THEME (default) */
 :root {
-  --background: #000000;
-  --foreground: #fafafa;
+  /* Core */
+  --color-theme-bg: #F7F7F4;
+  --color-theme-card: #F2F1ED;
+  --color-theme-fg: #26251E;
+  --color-theme-fg-02: #3B3A33;
+
+  /* Accent */
+  --color-theme-accent: #F54E00;
+
+  /* Text */
+  --color-theme-text-primary: var(--color-theme-fg);
+  --color-theme-text-secondary: color-mix(in oklab, var(--color-theme-fg) 60%, transparent);
+  --color-theme-text-tertiary: color-mix(in oklab, var(--color-theme-fg) 40%, transparent);
+  --color-theme-text-quaternary: color-mix(in oklab, var(--color-theme-fg) 20%, transparent);
+  --color-theme-text-inverted: var(--color-theme-bg);
+
+  /* Background */
+  --color-theme-bg-primary: var(--color-theme-fg);
+  --color-theme-bg-secondary: color-mix(in oklab, var(--color-theme-fg) 8%, transparent);
+  --color-theme-bg-tertiary: color-mix(in oklab, var(--color-theme-fg) 6%, transparent);
+  --color-theme-bg-quaternary: color-mix(in oklab, var(--color-theme-fg) 2.5%, transparent);
+  --color-theme-bg-card: var(--color-theme-card);
+  --color-theme-bg-card-hover: color-mix(in oklab, var(--color-theme-fg) 2.5%, var(--color-theme-card));
+
+  /* Border */
+  --color-theme-border-strong: color-mix(in oklab, var(--color-theme-fg) 80%, transparent);
+  --color-theme-border-primary: color-mix(in oklab, var(--color-theme-fg) 12%, transparent);
+  --color-theme-border-secondary: color-mix(in oklab, var(--color-theme-fg) 8%, transparent);
+  --color-theme-border-tertiary: color-mix(in oklab, var(--color-theme-fg) 4%, transparent);
+
+  /* Icons */
+  --color-theme-status-icon: #777;
+  --color-theme-action-icon: #666;
+
+  /* Brand Neutrals */
+  --brand-neutrals-50: #F2F2F2;
+  --brand-neutrals-100: #e6e6e6;
+  --brand-neutrals-200: #cccccc;
+  --brand-neutrals-300: #b3b3b3;
+  --brand-neutrals-400: #999999;
+  --brand-neutrals-500: #888888;
+  --brand-neutrals-600: #666666;
+  --brand-neutrals-700: #4d4d4d;
+  --brand-neutrals-800: #333333;
+  --brand-neutrals-900: #1A1A1A;
+
+  /* Brand Blues */
+  --brand-blue-100: #AFC1FB;
+  --brand-blue-200: #88A2FA;
+  --brand-blue-300: #6083F8;
+  --brand-blue-400: #3864F6;
+  --brand-blue-500: #2D50C6;
+  --brand-blue-600: #162966;
+  --brand-blue-700: #0B1636;
+
+  /* Brand Pinks */
+  --brand-pink-100: #F7D5F4;
+  --brand-pink-200: #F2C1EE;
+  --brand-pink-300: #EEACE9;
+  --brand-pink-400: #EA97E3;
+  --brand-pink-500: #CA7CC3;
+  --brand-pink-600: #8A4584;
+  --brand-pink-700: #6A2A65;
+
+  /* Brand Yellows */
+  --brand-yellow-100: #F6E1B1;
+  --brand-yellow-200: #F2D189;
+  --brand-yellow-300: #EDC262;
+  --brand-yellow-400: #E9B33B;
+  --brand-yellow-500: #BA8F2F;
+  --brand-yellow-600: #5D4818;
+  --brand-yellow-700: #2F240C;
+
+  /* Brand Greens */
+  --brand-green-100: #B9D796;
+  --brand-green-200: #9CC56C;
+  --brand-green-300: #80B343;
+  --brand-green-400: #63A11A;
+  --brand-green-500: #4F8115;
+  --brand-green-600: #28400A;
+  --brand-green-700: #142005;
+
+  /* Brand Light Blues */
+  --brand-light-blue-100: #BCE0FB;
+  --brand-light-blue-200: #9BD1F9;
+  --brand-light-blue-300: #79C1F7;
+  --brand-light-blue-400: #58B2F5;
+  --brand-light-blue-500: #4793CB;
+  --brand-light-blue-600: #245477;
+  --brand-light-blue-700: #13344D;
+
+  /* Misc */
+  --brand-warning: #ebcb8b;
+  --brand-light-black: #191919;
+  --brand-medium-black: #0c0c0c;
+
+  /* Legacy aliases for compatibility */
+  --background: var(--color-theme-bg);
+  --foreground: var(--color-theme-fg);
+}
+
+/* DARK THEME */
+:root.dark, .dark {
+  /* Core */
+  --color-theme-bg: #14120B;
+  --color-theme-card: #1b1a15;
+  --color-theme-fg: #EDECEC;
+  --color-theme-fg-02: #D7D6D5;
+
+  /* Card */
+  --color-theme-bg-card: #1b1a15;
+  --color-theme-bg-card-hover: #262622;
+
+  /* Icons */
+  --color-theme-status-icon: #DDD;
+  --color-theme-action-icon: #999;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--color-theme-bg);
+  --color-foreground: var(--color-theme-fg);
+  --color-accent: var(--color-theme-accent);
+  --color-card: var(--color-theme-card);
+  --color-text-primary: var(--color-theme-text-primary);
+  --color-text-secondary: var(--color-theme-text-secondary);
+  --color-text-tertiary: var(--color-theme-text-tertiary);
+  --color-border-primary: var(--color-theme-border-primary);
+  --color-border-secondary: var(--color-theme-border-secondary);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -19,16 +145,16 @@
 }
 
 html {
-  background: #000000;
+  background: var(--color-theme-bg);
   /* Fix 100vh bug on mobile - use fill-available as fallback */
   height: 100%;
   height: -webkit-fill-available;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background: var(--color-theme-bg);
+  color: var(--color-theme-fg);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Fix 100vh bug on mobile */
@@ -67,17 +193,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--color-theme-border-primary);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--color-theme-border-strong);
 }
 
-/* Focus styles - subtle dark theme */
+/* Focus styles */
 :focus-visible {
-  outline: 1px solid #52525b;
+  outline: 1px solid var(--color-theme-border-primary);
   outline-offset: 1px;
 }
 
@@ -89,7 +215,7 @@ select:focus-visible {
 
 /* Selection */
 ::selection {
-  background: #10b98140;
+  background: color-mix(in oklab, var(--color-theme-accent) 40%, transparent);
 }
 
 /* Safe area utilities for iOS */
@@ -106,34 +232,35 @@ select:focus-visible {
 }
 
 /* Elegant shimmer text effect for loading states */
-/* Muted zinc base with smooth white gradient sweep from left to right */
+/* Muted base with bright highlight sweep from right to left */
 .shimmer-text {
   background: linear-gradient(
     90deg,
-    #71717a 0%,
-    #71717a 35%,
-    #d4d4d8 50%,
-    #71717a 65%,
-    #71717a 100%
+    var(--color-theme-text-tertiary) 0%,
+    var(--color-theme-text-tertiary) 40%,
+    var(--color-theme-text-primary) 50%,
+    var(--color-theme-text-tertiary) 60%,
+    var(--color-theme-text-tertiary) 100%
   );
-  background-size: 300% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer-sweep 3s ease-in-out infinite;
+  color: transparent;
+  animation: shimmer-mask 2s infinite linear;
 }
 
 /* Subtle shimmer for active agent response - gentle fade effect */
 .shimmer-active {
-  animation: shimmer-pulse 2.5s ease-in-out infinite;
+  animation: shimmer-pulse 1.2s ease-in-out infinite;
 }
 
-@keyframes shimmer-sweep {
+/* Shimmer sweep animation - used by .shimmer-text and ShimmerText component */
+@keyframes shimmer-mask {
   0% {
     background-position: 100% 0;
   }
   100% {
-    background-position: 0% 0;
+    background-position: -100% 0;
   }
 }
 
@@ -142,7 +269,7 @@ select:focus-visible {
     opacity: 1;
   }
   50% {
-    opacity: 0.8;
+    opacity: 0.7;
   }
 }
 
@@ -159,10 +286,10 @@ select:focus-visible {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 50%,
+    var(--color-theme-bg-tertiary) 50%,
     transparent 100%
   );
-  animation: skeleton-wave 1.8s ease-in-out infinite;
+  animation: skeleton-wave 1s linear infinite;
 }
 
 @keyframes skeleton-wave {
@@ -216,15 +343,141 @@ a:active {
 [data-scroll-container] {
   /* Smooth momentum scrolling on iOS - enables natural bounce */
   -webkit-overflow-scrolling: touch;
-  
-  /* GPU acceleration for smoother scrolling */
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
 }
 
 
 /* Prevent zoom on double-tap for interactive elements */
 button, a, input, textarea, select {
   touch-action: manipulation;
+}
+
+
+/* ========================================
+   Screen Edge Blur System
+   ======================================== */
+
+/*
+ * NEW APPROACH (Composer-style):
+ * Put a real translucent element *inside* the fixed header/footer containers.
+ * That element has backdrop-filter + a mask-image fade so it becomes fully
+ * transparent deeper into the content.
+ *
+ * This avoids backdrop-root / stacking quirks we were hitting with sibling
+ * overlay divs and matches the known-working Composer blur technique.
+ */
+
+/* Top UI container - header + search */
+.edge-blur-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* Bottom UI container - composer */
+.edge-blur-bottom {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* Foreground wrapper inside edge containers (so UI sits above the blur layer) */
+.edge-ui {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* Frosted blur layers (inserted as real DOM elements) */
+.frosted-edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  pointer-events: none;
+  /*
+   * IMPORTANT: We avoid mask-image on the blur layer itself because in some
+   * browsers it can effectively "kill" the perceived backdrop blur.
+   * Instead we fade the effect by fading the element's background alpha.
+   */
+  /* Ensure it's treated as a "real" painted layer for backdrop-filter */
+  background-color: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(64px) saturate(180%);
+  -webkit-backdrop-filter: blur(64px) saturate(180%);
+}
+
+.frosted-edge-top {
+  top: 0;
+  height: 14rem; /* header+search + fade zone */
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.32) 35%,
+    rgba(0, 0, 0, 0.14) 65%,
+    rgba(0, 0, 0, 0.06) 82%,
+    transparent 100%
+  );
+}
+
+.frosted-edge-bottom {
+  bottom: 0;
+  height: 12rem; /* composer + fade zone */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.30) 32%,
+    rgba(0, 0, 0, 0.13) 62%,
+    rgba(0, 0, 0, 0.06) 80%,
+    transparent 100%
+  );
+}
+
+/* ========================================
+   List Item Animations
+   ======================================== */
+
+/* Fade in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Fade in and slide up animation for list items */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.25s ease-out forwards;
+}
+
+/* Hide scrollbar utility - keeps scrolling but hides the visual scrollbar */
+.scrollbar-hidden {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
 }
 

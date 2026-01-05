@@ -3,6 +3,7 @@
 interface CursorLoaderProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  loop?: boolean;
 }
 
 const sizeMap = {
@@ -11,12 +12,12 @@ const sizeMap = {
   lg: 'w-12 h-12',
 };
 
-export function CursorLoader({ size = 'md', className = '' }: CursorLoaderProps) {
+export function CursorLoader({ size = 'md', className = '', loop = true }: CursorLoaderProps) {
   return (
     <div className={`${sizeMap[size]} ${className}`}>
       <video
         autoPlay
-        loop
+        loop={loop}
         muted
         playsInline
         className="w-full h-full object-contain"
