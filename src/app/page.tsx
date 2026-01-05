@@ -79,7 +79,10 @@ function Banner({
 }
 
 function toErrorMessage(err: unknown): string {
-  if (err instanceof RateLimitError) return err.message;
+  if (err instanceof RateLimitError) {
+    const wait = err.retryAfterMs ? Math.ceil(err.retryAfterMs / 1000) : null;
+    return wait ? `${err.message} (wait ${wait}s)` : err.message;
+  }
   if (err instanceof AuthError) return err.message;
   if (err instanceof MalformedResponseError) return err.message;
   if (err instanceof Error) return err.message;
