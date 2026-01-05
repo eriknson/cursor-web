@@ -18,52 +18,106 @@ export interface CachedRepo {
   pushedAt?: string; // ISO timestamp of last push from GitHub
 }
 
-export function getApiKey(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(STORAGE_KEYS.API_KEY);
-}
+type SafeStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
 
-export function setApiKey(key: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.API_KEY, key);
-}
+const memoryStorage = (() => {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  };
+})();
 
-export function clearApiKey(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEYS.API_KEY);
-}
-
-export function getCachedRepos(ignoreExpiry = false): CachedRepo[] | null {
-  if (typeof window === 'undefined') return null;
-  
-  const fetchedAt = localStorage.getItem(STORAGE_KEYS.REPOS_FETCHED_AT);
-  if (!fetchedAt) return null;
-  
-  const age = Date.now() - parseInt(fetchedAt, 10);
-  if (!ignoreExpiry && age > REPO_CACHE_TTL_MS) return null;
-  
-  const reposJson = localStorage.getItem(STORAGE_KEYS.REPOS);
-  if (!reposJson) return null;
-  
+function getStorage(): SafeStorage {
+  if (typeof window === 'undefined') return memoryStorage;
   try {
-    return JSON.parse(reposJson) as CachedRepo[];
+    const testKey = '__cursor_storage_test__';
+    window.localStorage.setItem(testKey, 'ok');
+    window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  } catch {
+    return memoryStorage;
+  }
+}
+
+function safeGetItem(key: string): string | null {
+  try {
+    return getStorage().getItem(key);
   } catch {
     return null;
   }
 }
 
+function safeSetItem(key: string, value: string): void {
+  try {
+    getStorage().setItem(key, value);
+  } catch {
+    // Swallow errors to avoid breaking UI when storage is unavailable
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    getStorage().removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+export function getApiKey(): string | null {
+  return safeGetItem(STORAGE_KEYS.API_KEY);
+}
+
+export function setApiKey(key: string): void {
+  safeSetItem(STORAGE_KEYS.API_KEY, key);
+}
+
+export function clearApiKey(): void {
+  safeRemoveItem(STORAGE_KEYS.API_KEY);
+}
+
+export function getCachedRepos(ignoreExpiry = false): CachedRepo[] | null {
+  const fetchedAtRaw = safeGetItem(STORAGE_KEYS.REPOS_FETCHED_AT);
+  if (!fetchedAtRaw) return null;
+
+  const fetchedAt = parseInt(fetchedAtRaw, 10);
+  if (Number.isNaN(fetchedAt)) {
+    // Corrupted timestamp - clear cache
+    safeRemoveItem(STORAGE_KEYS.REPOS);
+    safeRemoveItem(STORAGE_KEYS.REPOS_FETCHED_AT);
+    return null;
+  }
+
+  const age = Date.now() - fetchedAt;
+  if (!ignoreExpiry && age > REPO_CACHE_TTL_MS) return null;
+
+  const reposJson = safeGetItem(STORAGE_KEYS.REPOS);
+  if (!reposJson) return null;
+
+  try {
+    return JSON.parse(reposJson) as CachedRepo[];
+  } catch {
+    // Corrupted cache - clear and return null
+    safeRemoveItem(STORAGE_KEYS.REPOS);
+    safeRemoveItem(STORAGE_KEYS.REPOS_FETCHED_AT);
+    return null;
+  }
+}
+
 export function setCachedRepos(repos: CachedRepo[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.REPOS, JSON.stringify(repos));
-  localStorage.setItem(STORAGE_KEYS.REPOS_FETCHED_AT, Date.now().toString());
+  safeSetItem(STORAGE_KEYS.REPOS, JSON.stringify(repos));
+  safeSetItem(STORAGE_KEYS.REPOS_FETCHED_AT, Date.now().toString());
 }
 
 export function getLastSelectedRepo(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(STORAGE_KEYS.LAST_SELECTED_REPO);
+  return safeGetItem(STORAGE_KEYS.LAST_SELECTED_REPO);
 }
 
 export function setLastSelectedRepo(repository: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.LAST_SELECTED_REPO, repository);
+  safeSetItem(STORAGE_KEYS.LAST_SELECTED_REPO, repository);
 }

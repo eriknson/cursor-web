@@ -1,6 +1,5 @@
-// Cursor SDK client - calls the server-side API route
-// The @cursor-ai/january package runs on the server, we stream results back
-// Uses onDelta for maximum granularity - every token, every tool call in real-time
+// Cursor SDK client - calls the server-side API route with resilience and mock support
+import { isMockApiEnabled } from './mockApi';
 
 export interface SdkAgentConfig {
   apiKey: string;
@@ -30,74 +29,104 @@ export interface AgentStep {
   isStreaming?: boolean;
 }
 
+const STREAM_TIMEOUT_MS = 45000;
+const STREAM_IDLE_TIMEOUT_MS = 20000;
+
 // Submit a prompt and stream the response from the SDK agent
 export async function* streamSdkAgent(
   config: SdkAgentConfig,
   message: string
 ): AsyncGenerator<AgentStep, void, unknown> {
-  const response = await fetch('/api/sdk-agent', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      apiKey: config.apiKey,
-      model: config.model || 'claude-4.5-sonnet',
-      repository: config.repository,
-      ref: config.ref || 'main',
-      message,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const message = errorData.error || 'Failed to start SDK agent';
-    const details = errorData.details ? `\n${errorData.details}` : '';
-    throw new Error(`${message}${details}`);
+  if (isMockApiEnabled()) {
+    yield* mockStream(config, message);
+    return;
   }
 
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('No response body');
-  }
+  const controller = new AbortController();
+  const killTimer = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS);
+  let lastActivity = Date.now();
+  const idleTimer = setInterval(() => {
+    if (Date.now() - lastActivity > STREAM_IDLE_TIMEOUT_MS) {
+      controller.abort();
+    }
+  }, 2000);
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+  try {
+    const response = await fetch('/api/sdk-agent', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: config.apiKey,
+        model: config.model || 'claude-4.5-sonnet',
+        repository: config.repository,
+        ref: config.ref || 'main',
+        message,
+      }),
+      signal: controller.signal,
+    });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const message = errorData.error || 'Failed to start SDK agent';
+      const details = errorData.details ? `\n${errorData.details}` : '';
+      throw new Error(`${message}${details}`);
+    }
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n\n');
-    buffer = lines.pop() || '';
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        try {
-          const update = JSON.parse(data) as Record<string, unknown>;
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-          if (update.type === 'done') {
-            return;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      lastActivity = Date.now();
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          try {
+            const update = JSON.parse(data) as Record<string, unknown>;
+
+            if (update.type === 'done') {
+              return;
+            }
+
+            if (update.type === 'error') {
+              throw new Error(update.error as string);
+            }
+
+            // Parse the update into an AgentStep
+            const step = parseUpdate(update);
+            if (step) {
+              yield step;
+            }
+          } catch (e) {
+            // Skip malformed JSON
+            if (e instanceof SyntaxError) continue;
+            throw e;
           }
-
-          if (update.type === 'error') {
-            throw new Error(update.error as string);
-          }
-
-          // Parse the update into an AgentStep
-          const step = parseUpdate(update);
-          if (step) {
-            yield step;
-          }
-        } catch (e) {
-          // Skip malformed JSON
-          if (e instanceof SyntaxError) continue;
-          throw e;
         }
       }
     }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('SDK stream interrupted (timeout or disconnect)');
+    }
+    throw err;
+  } finally {
+    clearTimeout(killTimer);
+    clearInterval(idleTimer);
   }
 }
 
@@ -314,3 +343,52 @@ export const SDK_MODELS = [
 ] as const;
 
 export type SdkModel = (typeof SDK_MODELS)[number];
+
+// Mock streaming for UI testing without credentials
+async function* mockStream(config: SdkAgentConfig, message: string): AsyncGenerator<AgentStep, void, unknown> {
+  const start = Date.now();
+  const steps: AgentStep[] = [
+    {
+      type: 'thinking',
+      content: 'Reviewing repository and task context...',
+      timestamp: new Date(),
+      isStreaming: true,
+    },
+    {
+      type: 'tool_start',
+      content: `$ git fetch origin ${config.ref || 'main'}`,
+      timestamp: new Date(),
+      toolType: 'shell',
+    },
+    {
+      type: 'tool_complete',
+      content: '✓ Command completed',
+      timestamp: new Date(),
+      toolType: 'shell',
+    },
+    {
+      type: 'text',
+      content: `Plan: ${message.slice(0, 120)}`,
+      timestamp: new Date(),
+      isStreaming: true,
+    },
+    {
+      type: 'step_complete',
+      content: 'Step completed: plan',
+      timestamp: new Date(),
+    },
+    {
+      type: 'text',
+      content: 'Implemented fixes in mock mode. No real API calls were made.',
+      timestamp: new Date(),
+      isStreaming: false,
+    },
+  ];
+
+  for (const step of steps) {
+    const elapsed = Date.now() - start;
+    const delay = Math.min(800, 150 + elapsed * 0.05);
+    await new Promise((r) => setTimeout(r, delay));
+    yield step;
+  }
+}

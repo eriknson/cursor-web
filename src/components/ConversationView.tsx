@@ -14,13 +14,12 @@ const INITIAL_PHASES = [
 // Hook to track initial loading phase before agent has real messages
 function useInitialLoadingPhase(isActive: boolean, hasMessages: boolean): string | null {
   const [phase, setPhase] = useState(0);
-  const startTimeRef = useRef<number>(Date.now());
   
   useEffect(() => {
     if (!isActive || hasMessages) {
       // Reset when inactive or when we have messages
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPhase(0);
-      startTimeRef.current = Date.now();
       return;
     }
     
@@ -327,7 +326,6 @@ function CloudAgentView({
   
   // Determine if the latest agent message is being actively worked on
   const latestAgentMessage = agentMessages[agentMessages.length - 1];
-  const isLatestMessageActive = latestAgentMessage && isActive && !isWaitingForResponse;
   
   // Always show shimmer on something when active - either the message or thinking text
   const needsShimmerIndicator = isActive && !showThinking && latestAgentMessage;
@@ -493,10 +491,12 @@ export function ConversationView({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messageIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
+  const latestAgentRef = useRef<Agent | null>(null);
   
   const pollCountRef = useRef(0);
   const rateLimitedRef = useRef(false);
@@ -517,7 +517,9 @@ export function ConversationView({
     try {
       const status = await getAgentStatus(apiKey, agentId);
       setAgent(status);
+      latestAgentRef.current = status;
       setError(null);
+      setPollError(null);
       onStatusChange?.(status.status);
       if (agentId) {
         onAgentUpdate?.(agentId, { status: status.status, name: status.name });
@@ -529,6 +531,9 @@ export function ConversationView({
         rateLimitedRef.current = true;
       } else if (isInitial) {
         setError('Failed to load agent');
+        setPollError(err instanceof Error ? err.message : 'Failed to load agent');
+      } else {
+        setPollError(err instanceof Error ? err.message : 'Failed to load agent');
       }
     }
 
@@ -560,6 +565,8 @@ export function ConversationView({
         if (err instanceof Error && (err.message.includes('429') || err.message.includes('Rate limited'))) {
           // Back off for 5 seconds before retrying conversation endpoint
           conversationRateLimitedUntilRef.current = Date.now() + 5000;
+        } else {
+          setPollError(err instanceof Error ? err.message : 'Failed to load conversation');
         }
       }
     }
@@ -567,7 +574,7 @@ export function ConversationView({
     return gotData;
   }, [agentId, apiKey, onStatusChange, onAgentUpdate]);
 
-  const scheduleNextPoll = useCallback(() => {
+  const scheduleNextPoll = useCallback(function scheduleNextPollFn() {
     if (pollingRef.current) clearTimeout(pollingRef.current);
     
     let interval = NORMAL_POLL_INTERVAL;
@@ -587,12 +594,10 @@ export function ConversationView({
       pollCountRef.current++;
       await fetchAll();
       
-      // Check terminal state using the agent we already fetched
-      // We stored it in state during fetchAll
-      const currentStatus = await getAgentStatus(apiKey, agentIdToCheck).catch(() => null);
-      const terminal = currentStatus?.status === 'FINISHED' || 
-                      currentStatus?.status === 'ERROR' || 
-                      currentStatus?.status === 'STOPPED';
+      const currentStatus = latestAgentRef.current?.status;
+      const terminal = currentStatus === 'FINISHED' || 
+                      currentStatus === 'ERROR' || 
+                      currentStatus === 'STOPPED';
       
       // Only stop polling if we successfully got a terminal status
       if (terminal) {
@@ -610,10 +615,10 @@ export function ConversationView({
       
       // Continue polling if agent is still current
       if (currentAgentIdRef.current === agentIdToCheck) {
-        scheduleNextPoll();
+        scheduleNextPollFn();
       }
     }, interval);
-  }, [fetchAll, apiKey]);
+  }, [fetchAll]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -631,6 +636,7 @@ export function ConversationView({
     // Skip processing for "pending" state - just show the prompt
     if (agentId === 'pending') {
       setAgent(null);
+      latestAgentRef.current = null;
       setMessages([]);
       setIsLoading(false);
       return;
@@ -651,6 +657,7 @@ export function ConversationView({
         setIsLoading(false);
       } else if (preloadedData) {
         setAgent(preloadedData.agent);
+        latestAgentRef.current = preloadedData.agent;
         setMessages(preloadedData.messages);
         messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
         setIsLoading(false);
@@ -662,6 +669,7 @@ export function ConversationView({
         }
       } else {
         setAgent(null);
+        latestAgentRef.current = null;
         setMessages([]);
         messageIdsRef.current = new Set();
         setIsLoading(true);
@@ -687,12 +695,18 @@ export function ConversationView({
       // Reset rate limit state and restart polling
       pollCountRef.current = 0;
       rateLimitedRef.current = false;
+      setPollError(null);
       // Fetch immediately then schedule next poll
       fetchAll(false, true).then(() => {
         scheduleNextPoll();
       });
     }
   }, [refreshTrigger, agentId, fetchAll, scheduleNextPoll]);
+
+  const handleRetry = () => {
+    setPollError(null);
+    fetchAll(true, true).then(() => scheduleNextPoll());
+  };
 
   if (!agentId) {
     return null;
@@ -756,6 +770,14 @@ export function ConversationView({
           ) : error ? (
             <div className="text-neutral-500">
               {error}
+              <div className="pt-2">
+                <button
+                  onClick={handleRetry}
+                  className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           ) : isPending ? (
             // Pending state - just show thinking while we wait for agent ID
@@ -765,6 +787,16 @@ export function ConversationView({
           ) : isLoading ? (
             <div className="shimmer-text text-[16px] md:text-[15px]">
               Thinking
+            </div>
+          ) : pollError ? (
+            <div className="text-neutral-500 space-y-2">
+              <div>{pollError}</div>
+              <button
+                onClick={handleRetry}
+                className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <CloudAgentView

@@ -15,13 +15,12 @@ const INITIAL_PHASES = [
 // Hook to track initial loading phase before agent has real messages
 function useInitialLoadingPhase(isActive: boolean, hasMessages: boolean): string | null {
   const [phase, setPhase] = useState(0);
-  const startTimeRef = useRef<number>(Date.now());
   
   useEffect(() => {
     if (!isActive || hasMessages) {
       // Reset when inactive or when we have messages
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPhase(0);
-      startTimeRef.current = Date.now();
       return;
     }
     
@@ -517,7 +516,7 @@ export function AgentDrawer({
     }
 
     return gotData;
-  }, [agentId, apiKey, onStatusChange]);
+  }, [agentId, apiKey, onStatusChange, onAgentUpdate]);
 
   const scheduleNextPoll = useCallback(() => {
     if (pollingRef.current) clearTimeout(pollingRef.current);
