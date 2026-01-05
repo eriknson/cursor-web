@@ -44,6 +44,8 @@ For local resilience testing without hitting the real Cursor API:
    // Reset
    window.__cursorMock.resetConfig();
    ```
+4. You can also trigger a one-off failure via query param (mock mode only):
+   - Append `?mock_failure=rate-limit|network|slow|auth|malformed` to any app URL during testing.
 4. All flows (repo list, runs, launch, follow-up, conversation polling, SDK stream) route through the mock layer in this mode.
 
 ## Getting an API Key

@@ -11,7 +11,7 @@ import {
   MalformedResponseError,
 } from './cursorTypes';
 
-type MockFailureMode = 'none' | 'rate-limit' | 'network' | 'slow' | 'auth' | 'malformed';
+export type MockFailureMode = 'none' | 'rate-limit' | 'network' | 'slow' | 'auth' | 'malformed';
 
 interface MockConfig {
   mode: MockFailureMode;
@@ -144,6 +144,16 @@ function resetConfig() {
   setConfig({ ...DEFAULT_CONFIG });
 }
 
+export async function withMockMode<T>(mode: MockFailureMode, fn: () => Promise<T>): Promise<T> {
+  const prev = { ...state.config };
+  setConfig({ mode, once: true });
+  try {
+    return await fn();
+  } finally {
+    state.config = prev;
+  }
+}
+
 async function maybeFail(endpoint: string) {
   const cfg = getConfig();
 
@@ -210,6 +220,7 @@ export const mockCursorApi = {
   setConfig,
   resetConfig,
   getConfig,
+  withMockMode,
 
   async validateApiKey(apiKey?: string): Promise<ApiKeyInfo> {
     void apiKey;

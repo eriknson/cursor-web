@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isMockApiEnabled, mockCursorApi } from '@/lib/mockApi';
+import { isMockApiEnabled, mockCursorApi, MockFailureMode, withMockMode } from '@/lib/mockApi';
 import { RateLimitError, AuthError, MalformedResponseError } from '@/lib/cursorTypes';
 
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
@@ -155,6 +155,13 @@ async function handleMock(
     }
   }
 
+  const search = new URL(request.url).searchParams;
+  const failureParam = search.get('mock_failure') as MockFailureMode | null;
+  const runWithFailure = failureParam && failureParam !== 'none'
+    ? (fn: () => Promise<{ data: unknown; status?: number }>) => withMockMode(failureParam, fn)
+    : async (fn: () => Promise<{ data: unknown; status?: number }>) => fn();
+
+  return runWithFailure(async () => {
   // GET routes
   if (method === 'GET' && path === 'me') {
     return { data: await mockCursorApi.validateApiKey(apiKey) };
@@ -198,4 +205,5 @@ async function handleMock(
   }
 
   return { data: { error: 'Mock endpoint not implemented' }, status: 404 };
+  });
 }
