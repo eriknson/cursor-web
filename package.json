@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:build\" \"npm:dev:electron\"",
-    "dev:renderer": "vite dev --host --port 5173 --clearScreen false",
+    "dev:renderer": "VITE_MOCK_CURSOR_API=true vite dev --host --port 5173 --clearScreen false",
     "dev:build": "VITE_DEV_SERVER_URL=http://localhost:5173 esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --outdir=dist --external:electron --sourcemap --watch",
     "dev:electron": "wait-on dist/main.js http://localhost:5173 && nodemon --watch dist/main.js --watch dist/preload.js --exec \"electron dist/main.js\"",
     "build": "npm run build:renderer && npm run build:main",

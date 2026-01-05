@@ -2,37 +2,21 @@
 // Uses Basic Auth with the API key as username and empty password
 
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
+const USE_MOCK = import.meta.env.VITE_MOCK_CURSOR_API === 'true' || !import.meta.env.VITE_MOCK_CURSOR_API;
 
-// Whether to use the proxy route (set to true if CORS blocks direct calls)
-const USE_PROXY = true;
-
-function getProxyUrl(path: string): string {
-  return `/api/cursor${path}`;
-}
-
-function getDirectUrl(path: string): string {
+function getUrl(path: string): string {
   return `${CURSOR_API_BASE}${path}`;
 }
 
-function getUrl(path: string): string {
-  return USE_PROXY ? getProxyUrl(path) : getDirectUrl(path);
-}
-
 function buildHeaders(apiKey: string, includeContentType = false): HeadersInit {
-  const headers: HeadersInit = {};
-  
-  if (USE_PROXY) {
-    // Pass API key in custom header for proxy to use
-    headers['X-Cursor-Api-Key'] = apiKey;
-  } else {
-    // Direct calls use Basic Auth
-    headers['Authorization'] = `Basic ${btoa(apiKey + ':')}`;
-  }
-  
+  const headers: HeadersInit = {
+    Authorization: `Basic ${btoa(`${apiKey}:`)}`,
+  };
+
   if (includeContentType) {
     headers['Content-Type'] = 'application/json';
   }
-  
+
   return headers;
 }
 
@@ -137,8 +121,49 @@ export interface FollowUpParams {
 }
 
 // API functions
+async function mockDelay(ms = 200): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function makeMockAgent(id: string, name: string, status: Agent['status'] = 'RUNNING'): Agent {
+  return {
+    id,
+    name,
+    status,
+    source: { repository: 'github.com/cursor-ai/example-repo', ref: 'main' },
+    target: {
+      branchName: 'cursor/mock-branch',
+      url: 'https://github.com/cursor-ai/example-repo/pull/1',
+      autoCreatePr: true,
+      openAsCursorGithubApp: false,
+      skipReviewerRequest: false,
+    },
+    summary: status === 'FINISHED' ? 'Completed mock task successfully.' : undefined,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function makeMockConversation(agentId: string): ConversationResponse {
+  return {
+    id: agentId,
+    messages: [
+      { id: `${agentId}-u1`, type: 'user_message', text: 'Fix the build in the repo.' },
+      { id: `${agentId}-a1`, type: 'assistant_message', text: 'Working on the build fix now.' },
+      { id: `${agentId}-a2`, type: 'assistant_message', text: 'Resolved dependency issue and updated lockfile.' },
+    ],
+  };
+}
 
 export async function validateApiKey(apiKey: string): Promise<ApiKeyInfo> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return {
+      apiKeyName: 'mock-key',
+      createdAt: new Date().toISOString(),
+      userEmail: 'mock@cursor.com',
+    };
+  }
+
   const res = await fetch(getUrl('/me'), {
     method: 'GET',
     headers: buildHeaders(apiKey),
@@ -171,6 +196,14 @@ export class AuthError extends Error {
 }
 
 export async function listRepositories(apiKey: string): Promise<Repository[]> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return [
+      { owner: 'cursor-ai', name: 'example-repo', repository: 'github.com/cursor-ai/example-repo' },
+      { owner: 'cursor-ai', name: 'desktop-app', repository: 'github.com/cursor-ai/desktop-app' },
+    ];
+  }
+
   const res = await fetch(getUrl('/repositories'), {
     method: 'GET',
     headers: buildHeaders(apiKey),
@@ -188,6 +221,14 @@ export async function listRepositories(apiKey: string): Promise<Repository[]> {
 }
 
 export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return [
+      makeMockAgent('agent-1', 'Investigate failing tests', 'FINISHED'),
+      makeMockAgent('agent-2', 'Upgrade dependencies', 'RUNNING'),
+    ].slice(0, limit);
+  }
+
   const res = await fetch(getUrl(`/agents?limit=${limit}`), {
     method: 'GET',
     headers: buildHeaders(apiKey),
@@ -202,6 +243,11 @@ export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
 }
 
 export async function getAgentStatus(apiKey: string, agentId: string): Promise<Agent> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return makeMockAgent(agentId, 'Mock agent status', 'RUNNING');
+  }
+
   const res = await fetch(getUrl(`/agents/${agentId}`), {
     method: 'GET',
     headers: buildHeaders(apiKey),
@@ -218,6 +264,11 @@ export async function getAgentStatus(apiKey: string, agentId: string): Promise<A
 }
 
 export async function getAgentConversation(apiKey: string, agentId: string): Promise<ConversationResponse> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return makeMockConversation(agentId);
+  }
+
   const res = await fetch(getUrl(`/agents/${agentId}/conversation`), {
     method: 'GET',
     headers: buildHeaders(apiKey),
@@ -234,6 +285,11 @@ export async function getAgentConversation(apiKey: string, agentId: string): Pro
 }
 
 export async function launchAgent(apiKey: string, params: LaunchAgentParams): Promise<Agent> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return makeMockAgent(`agent-${Date.now()}`, params.prompt.text.slice(0, 40) || 'New mock agent', 'RUNNING');
+  }
+
   const res = await fetch(getUrl('/agents'), {
     method: 'POST',
     headers: buildHeaders(apiKey, true),
@@ -249,6 +305,11 @@ export async function launchAgent(apiKey: string, params: LaunchAgentParams): Pr
 }
 
 export async function addFollowUp(apiKey: string, agentId: string, params: FollowUpParams): Promise<{ id: string }> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return { id: `${agentId}-followup-${Date.now()}` };
+  }
+
   const res = await fetch(getUrl(`/agents/${agentId}/followup`), {
     method: 'POST',
     headers: buildHeaders(apiKey, true),
@@ -263,6 +324,11 @@ export async function addFollowUp(apiKey: string, agentId: string, params: Follo
 }
 
 export async function stopAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return { id: agentId };
+  }
+
   const res = await fetch(getUrl(`/agents/${agentId}/stop`), {
     method: 'POST',
     headers: buildHeaders(apiKey),
@@ -276,6 +342,11 @@ export async function stopAgent(apiKey: string, agentId: string): Promise<{ id: 
 }
 
 export async function deleteAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return { id: agentId };
+  }
+
   const res = await fetch(getUrl(`/agents/${agentId}`), {
     method: 'DELETE',
     headers: buildHeaders(apiKey),
@@ -289,6 +360,11 @@ export async function deleteAgent(apiKey: string, agentId: string): Promise<{ id
 }
 
 export async function listModels(apiKey: string): Promise<string[]> {
+  if (USE_MOCK) {
+    await mockDelay();
+    return ['composer-1', 'opus-4.5', 'gpt-5.2'];
+  }
+
   const res = await fetch(getUrl('/models'), {
     method: 'GET',
     headers: buildHeaders(apiKey),
