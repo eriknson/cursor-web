@@ -515,6 +515,9 @@ export function ConversationView({
     if (!agentId || !apiKey || agentId.startsWith('sdk-')) return false;
     if (fetchInFlightRef.current) return false;
     fetchInFlightRef.current = true;
+    const release = () => {
+      fetchInFlightRef.current = false;
+    };
     
     let gotData = false;
     
@@ -536,6 +539,7 @@ export function ConversationView({
         onAuthFailure?.();
         setError('Authentication failed.');
         setPollError('Authentication failed.');
+        release();
         return false;
       }
       if (err instanceof Error && err.message.includes('429')) {
@@ -577,6 +581,7 @@ export function ConversationView({
           onAuthFailure?.();
           setError('Authentication failed.');
           setPollError('Authentication failed.');
+          release();
           return gotData;
         }
         if (err instanceof Error && (err.message.includes('429') || err.message.includes('Rate limited'))) {
@@ -588,7 +593,7 @@ export function ConversationView({
       }
     }
 
-    fetchInFlightRef.current = false;
+    release();
     return gotData;
   }, [agentId, apiKey, onStatusChange, onAgentUpdate, onAuthFailure]);
 
