@@ -1,6 +1,8 @@
 {
   "name": "cursor-web",
   "version": "0.1.0",
+  "description": "Cursor desktop (macOS Electron) client with mockable cloud agent UI.",
+  "author": "Cursor",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
