@@ -35,10 +35,19 @@ function formatRelativeTime(dateStr: string, status: string): string {
   return timeStr;
 }
 
-function getRepoName(repository: string): string {
-  // Repository is in format "owner/name"
+function getRepoName(agent: Agent): string {
+  // Repository format is "github.com/owner/repo-name"
+  // We want the last part (repo name)
+  const repository = agent.source.repository;
   const parts = repository.split('/');
-  return parts.length >= 2 ? parts[1] : repository;
+  
+  // Get the last part which is the repo name
+  const repoName = parts[parts.length - 1];
+  if (repoName && repoName !== 'github.com') {
+    return repoName;
+  }
+  
+  return repository;
 }
 
 export function RunList({ runs, onSelect }: RunListProps) {
@@ -63,7 +72,7 @@ export function RunList({ runs, onSelect }: RunListProps) {
                   {agent.name || 'Agent task'}
                 </span>
                 <div className="flex items-center gap-2 mt-1 text-xs text-zinc-600">
-                  <span>{getRepoName(agent.source.repository)}</span>
+                  <span>{getRepoName(agent)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
