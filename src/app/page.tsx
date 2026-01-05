@@ -759,10 +759,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* ====== TOP EDGE: Header + Search (UI layer with frosted blur) ====== */}
-      <div className="edge-blur-top pt-safe">
-        <div className="frosted-edge frosted-edge-top" aria-hidden="true" />
-        <div className="edge-ui">
+      {/* ====== TOP EDGE: Header + Search ====== */}
+      <div className="fixed top-0 left-0 right-0 z-40 pt-safe" style={{ background: theme.bg.main }}>
+        <div>
           {/* Header bar */}
           <div className="flex items-center justify-between px-4 h-14">
             {/* Left side */}
@@ -879,10 +878,9 @@ export default function Home() {
         )}
       </main>
 
-      {/* ====== BOTTOM EDGE: Composer with blur fade ====== */}
-      <div className="edge-blur-bottom pb-safe">
-        <div className="frosted-edge frosted-edge-bottom" aria-hidden="true" />
-        <div className="edge-ui px-4 pb-4 pt-2">
+      {/* ====== BOTTOM EDGE: Composer ====== */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 pb-safe" style={{ background: theme.bg.main }}>
+        <div className="px-4 pb-4 pt-2">
           <div className="max-w-[700px] mx-auto">
             <Composer
               onSubmit={handleLaunch}
