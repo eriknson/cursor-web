@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const searchParams = new URL(request.url).searchParams;
+  const mockFailure = searchParams.get('mock_failure');
   const { apiKey, model, repository, ref, message } = body;
 
   if (!apiKey || !repository || !message) {
@@ -53,6 +55,35 @@ export async function POST(request: NextRequest) {
 
   // Mock mode: emit deterministic stream without hitting Cursor SDK
   if (isMockApiEnabled()) {
+    // Allow per-request mock failure overrides for SDK route
+    if (mockFailure === 'rate-limit') {
+      return new Response(JSON.stringify({ error: 'Rate limited (mock)' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (mockFailure === 'auth') {
+      return new Response(JSON.stringify({ error: 'Authentication failed (mock)' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (mockFailure === 'network') {
+      return new Response(null, { status: 503 });
+    }
+    if (mockFailure === 'slow') {
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    if (mockFailure === 'malformed') {
+      return new Response('data: {bad json}\n\n', {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
     const updates = [
       () => ({ type: 'thinking-delta', text: 'Booting mock SDK agent...' }),
       () => ({ type: 'tool-call-started', toolCall: { type: 'shell', args: { command: 'echo "mock"' } } }),
