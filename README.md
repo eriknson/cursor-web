@@ -68,6 +68,12 @@ Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid ke
 - Stop/delete agent: status updates or agent disappears as expected.
 - Close/reopen app: window size/position restored; storage (API key, repo cache, last repo) persists.
 
+### Known limitations
+
+- DMG packaging is macOS-only (guarded by `scripts/ensure-mac.js`); Linux packaging will fail fast.
+- SDK mode is disabled/stubbed; cloud mode only.
+- Mock mode is default in dev; set `VITE_MOCK_CURSOR_API=false` to hit real API (requires valid key).
+
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
