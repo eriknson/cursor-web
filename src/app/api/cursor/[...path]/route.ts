@@ -65,10 +65,16 @@ async function proxyRequest(
   if (isMockApiEnabled()) {
     try {
       const result = await handleMock(pathSegments, method, apiKey, request);
-      return NextResponse.json(result.data, { status: result.status ?? 200 });
+      const headers: Record<string, string> = {};
+      if (result.retryAfterMs) {
+        headers['Retry-After'] = Math.ceil(result.retryAfterMs / 1000).toString();
+      }
+      return NextResponse.json(result.data, { status: result.status ?? 200, headers });
     } catch (err) {
       if (err instanceof RateLimitError) {
-        return NextResponse.json({ error: err.message }, { status: 429 });
+        const headers: Record<string, string> = {};
+        if (err.retryAfterMs) headers['Retry-After'] = Math.ceil(err.retryAfterMs / 1000).toString();
+        return NextResponse.json({ error: err.message }, { status: 429, headers });
       }
       if (err instanceof AuthError) {
         return NextResponse.json({ error: err.message }, { status: 401 });
@@ -143,7 +149,7 @@ async function handleMock(
   method: Method,
   apiKey: string,
   request: NextRequest
-): Promise<{ data: unknown; status?: number }> {
+): Promise<{ data: unknown; status?: number; retryAfterMs?: number }> {
   const path = pathSegments.join('/');
   const bodyText = method === 'GET' ? null : await request.text().catch(() => null);
   let body: unknown = undefined;
