@@ -284,7 +284,7 @@ function MockedApp() {
           name: prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt,
           status: 'RUNNING',
           source: { repository: selectedRepo.repository, ref: 'main' },
-          target: { branchName: '', url: '', autoCreatePr: false, openAsCursorGithubApp: false, skipReviewerRequest: false },
+          target: { branchName: '', url: '', autoCreatePr: false },
           createdAt: new Date().toISOString(),
         };
         setRuns(prev => [tempAgent, ...prev]);
