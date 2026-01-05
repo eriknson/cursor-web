@@ -36,6 +36,17 @@ A web interface for launching and managing Cursor Cloud Agents.
    ```
    Cross-building mac targets is not supported on Linux; run on macOS for DMG generation.
 
+### Environment variables
+
+Copy `.env.example` to `.env` (optional):
+
+```
+VITE_MOCK_CURSOR_API=true
+VITE_MOCK_LATENCY_MS=200
+```
+
+Set `VITE_MOCK_CURSOR_API=false` to hit the real Cursor API (requires a valid key). Adjust mock latency to taste for demos.
+
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
