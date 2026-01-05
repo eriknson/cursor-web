@@ -174,7 +174,15 @@ export default function Home() {
       setRuns(agents);
     } catch (err) {
       console.error('Failed to fetch agents:', err);
-      setRunsError(toErrorMessage(err));
+      if (err instanceof AuthError) {
+        setRuns([]);
+        clearApiKey();
+        setApiKeyState(null);
+        setUserInfo(null);
+        setRunsError('Authentication failed. Please re-enter your API key.');
+      } else {
+        setRunsError(toErrorMessage(err));
+      }
     } finally {
       setIsLoadingRuns(false);
     }
@@ -311,7 +319,16 @@ export default function Home() {
       setCachedRepos(mappedRepos);
     } catch (err) {
       console.error('Failed to fetch repos:', err);
-      setRepoError(toErrorMessage(err));
+      if (err instanceof AuthError) {
+        clearApiKey();
+        setApiKeyState(null);
+        setUserInfo(null);
+        setRepos([]);
+        setSelectedRepo(null);
+        setRepoError('Authentication failed. Please re-enter your API key.');
+      } else {
+        setRepoError(toErrorMessage(err));
+      }
       // On rate limit, try stale cache (ignore expiry)
       if (err instanceof RateLimitError) {
         const staleCache = getCachedRepos(true);
