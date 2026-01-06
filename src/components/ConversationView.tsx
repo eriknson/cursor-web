@@ -9,7 +9,7 @@ import { useTypewriter } from '@/components/TypewriterText';
 import { theme } from '@/lib/theme';
 
 // Cursor cube avatar for agent messages
-function CursorAvatar({ size = 24 }: { size?: number }) {
+function CursorAvatar({ size = 24, noMargin = false }: { size?: number; noMargin?: boolean }) {
   const iconSize = Math.round(size * 0.55);
   return (
     <div 
@@ -17,7 +17,7 @@ function CursorAvatar({ size = 24 }: { size?: number }) {
       style={{ 
         width: size, 
         height: size, 
-        marginTop: 6, // Align avatar center with first line of text
+        marginTop: noMargin ? 0 : 6, // Align avatar center with first line of text
         background: 'rgba(255, 255, 255, 0.08)',
       }}
     >
@@ -28,6 +28,21 @@ function CursorAvatar({ size = 24 }: { size?: number }) {
         height={iconSize}
         style={{ opacity: 0.85 }}
       />
+    </div>
+  );
+}
+
+// Avatar header for mobile - shows avatar with "Cursor" label above first message
+function CursorAvatarHeader() {
+  return (
+    <div className="flex items-center gap-2 pt-3 sm:hidden">
+      <CursorAvatar size={20} noMargin />
+      <span 
+        className="text-xs font-medium"
+        style={{ color: theme.text.tertiary }}
+      >
+        Cursor
+      </span>
     </div>
   );
 }
@@ -340,31 +355,39 @@ function CloudAgentView({
         const isFirstInSequence = prevMsg?.type !== 'assistant_message';
         
         return (
-          <div 
-            key={msg.id} 
-            className={`flex items-start gap-2.5 ${spacingClass}`}
-          >
-            {isFirstInSequence ? (
-              <CursorAvatar />
-            ) : (
-              // Spacer to maintain alignment when avatar is hidden
-              <div className="w-6 flex-shrink-0" />
-            )}
+          <div key={msg.id}>
+            {/* Mobile: Show avatar header above first message in sequence */}
+            {isFirstInSequence && <CursorAvatarHeader />}
+            
+            {/* Message row - responsive layout */}
             <div 
-              className="max-w-[70%] px-3 py-2 rounded-2xl"
-              style={{ background: theme.bg.quaternary }}
+              className={`flex items-start sm:gap-2.5 ${isFirstInSequence ? 'pt-1.5 sm:pt-3' : spacingClass}`}
             >
+              {/* Desktop only: Avatar to the left */}
+              <div className="hidden sm:block">
+                {isFirstInSequence ? (
+                  <CursorAvatar />
+                ) : (
+                  // Spacer to maintain alignment when avatar is hidden
+                  <div className="w-6 flex-shrink-0" />
+                )}
+              </div>
               <div 
-                className="text-[13px] leading-[1.7] whitespace-pre-wrap transition-colors"
-                style={{ 
-                  color: isActiveMessage ? theme.text.primary : theme.text.secondary 
-                }}
+                className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                style={{ background: theme.bg.quaternary }}
               >
-                <AgentResponseText 
-                  text={msg.text} 
-                  isActive={isActiveMessage}
-                  skipAnimation={!isActiveMessage}
-                />
+                <div 
+                  className="text-[13px] leading-[1.7] whitespace-pre-wrap transition-colors"
+                  style={{ 
+                    color: isActiveMessage ? theme.text.primary : theme.text.secondary 
+                  }}
+                >
+                  <AgentResponseText 
+                    text={msg.text} 
+                    isActive={isActiveMessage}
+                    skipAnimation={!isActiveMessage}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -374,29 +397,38 @@ function CloudAgentView({
       {/* Status indicator - shows REAL agent status/name */}
       {/* Hide avatar if continuing after agent messages */}
       {showThinking && (
-        <div className="flex items-start gap-2.5 pt-3">
-          {agentMessages.length === 0 ? (
-            <CursorAvatar />
-          ) : (
-            <div className="w-6 flex-shrink-0" />
-          )}
-          <div 
-            className="max-w-[70%] px-3 py-2 rounded-2xl"
-            style={{ background: theme.bg.quaternary }}
-          >
-            <ShimmerText className="text-[13px]">
-              {statusMessage}
-            </ShimmerText>
+        <div>
+          {/* Mobile: Show avatar header if no messages yet */}
+          {agentMessages.length === 0 && <CursorAvatarHeader />}
+          
+          <div className={`flex items-start sm:gap-2.5 ${agentMessages.length === 0 ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
+            {/* Desktop only: Avatar or spacer */}
+            <div className="hidden sm:block">
+              {agentMessages.length === 0 ? (
+                <CursorAvatar />
+              ) : (
+                <div className="w-6 flex-shrink-0" />
+              )}
+            </div>
+            <div 
+              className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+              style={{ background: theme.bg.quaternary }}
+            >
+              <ShimmerText className="text-[13px]">
+                {statusMessage}
+              </ShimmerText>
+            </div>
           </div>
         </div>
       )}
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <div className="flex items-start gap-2.5 pt-3">
-          <div className="w-6 flex-shrink-0" />
+        <div className="flex items-start sm:gap-2.5 pt-3">
+          {/* Desktop only: Spacer */}
+          <div className="hidden sm:block w-6 flex-shrink-0" />
           <div 
-            className="max-w-[70%] px-3 py-2 rounded-2xl"
+            className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
             style={{ background: theme.bg.quaternary }}
           >
             <ShimmerText className="text-[13px]">
@@ -408,21 +440,29 @@ function CloudAgentView({
 
       {/* Summary - only show when finished and not stale */}
       {agent?.summary && !isActive && !summaryStale && (
-        <div className="flex items-start gap-2.5 pt-3">
-          {agentMessages.length === 0 ? (
-            <CursorAvatar />
-          ) : (
-            <div className="w-6 flex-shrink-0" />
-          )}
-          <div 
-            className="max-w-[70%] px-3 py-2 rounded-2xl"
-            style={{ background: theme.bg.quaternary }}
-          >
+        <div>
+          {/* Mobile: Show avatar header if no messages */}
+          {agentMessages.length === 0 && <CursorAvatarHeader />}
+          
+          <div className={`flex items-start sm:gap-2.5 ${agentMessages.length === 0 ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
+            {/* Desktop only: Avatar or spacer */}
+            <div className="hidden sm:block">
+              {agentMessages.length === 0 ? (
+                <CursorAvatar />
+              ) : (
+                <div className="w-6 flex-shrink-0" />
+              )}
+            </div>
             <div 
-              className="text-[13px] leading-[1.7]"
-              style={{ color: theme.text.primary }}
+              className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+              style={{ background: theme.bg.quaternary }}
             >
-              {renderWithCodeTags(agent.summary)}
+              <div 
+                className="text-[13px] leading-[1.7]"
+                style={{ color: theme.text.primary }}
+              >
+                {renderWithCodeTags(agent.summary)}
+              </div>
             </div>
           </div>
         </div>
@@ -488,7 +528,7 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
   }
   
   return (
-    <div className="pt-1 flex items-center gap-1.5 pl-[34px]">
+    <div className="pt-1 flex items-center gap-1.5 sm:pl-[34px]">
       {/* Checkmark icon - inherits text color */}
       <svg 
         width="12" 
@@ -950,7 +990,7 @@ export function ConversationView({
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Conversation content with consistent padding */}
-      <div className="pt-16 pb-44 px-4">
+      <div className="pt-16 pb-44 px-2 sm:px-4">
         {/* Previous conversation turns - show history from continuation chain */}
         {previousTurns.map((turn, turnIdx) => {
           const isFirstTurn = turnIdx === 0;
@@ -977,18 +1017,27 @@ export function ConversationView({
               {/* Previous agent messages */}
               <div className="text-sm">
                 {turn.messages.filter(m => m.type === 'assistant_message').map((msg, msgIdx) => {
+                  const isFirst = msgIdx === 0;
                   return (
-                    <div key={msg.id} className="flex items-start gap-2.5 pt-3">
-                      <CursorAvatar />
-                      <div 
-                        className="max-w-[70%] px-3 py-2 rounded-2xl"
-                        style={{ background: theme.bg.quaternary }}
-                      >
+                    <div key={msg.id}>
+                      {/* Mobile: Show avatar header above first message */}
+                      {isFirst && <CursorAvatarHeader />}
+                      
+                      <div className={`flex items-start sm:gap-2.5 ${isFirst ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
+                        {/* Desktop only: Avatar */}
+                        <div className="hidden sm:block">
+                          <CursorAvatar />
+                        </div>
                         <div 
-                          className="text-[13px] leading-[1.7] whitespace-pre-wrap"
-                          style={{ color: theme.text.tertiary }}
+                          className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                          style={{ background: theme.bg.quaternary }}
                         >
-                          {renderWithCodeTags(msg.text)}
+                          <div 
+                            className="text-[13px] leading-[1.7] whitespace-pre-wrap"
+                            style={{ color: theme.text.tertiary }}
+                          >
+                            {renderWithCodeTags(msg.text)}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -997,10 +1046,13 @@ export function ConversationView({
                 
                 {/* Previous turn summary */}
                 {turn.summary && (
-                  <div className="flex items-start gap-2.5 pt-3">
-                    <CursorAvatar />
+                  <div className="flex items-start sm:gap-2.5 pt-3">
+                    {/* Desktop only: Avatar */}
+                    <div className="hidden sm:block">
+                      <CursorAvatar />
+                    </div>
                     <div 
-                      className="max-w-[70%] px-3 py-2 rounded-2xl"
+                      className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
                       style={{ background: theme.bg.quaternary }}
                     >
                       <div 
@@ -1049,43 +1101,58 @@ export function ConversationView({
               </div>
 
               {/* Current agent response - left aligned */}
-              <div className="text-sm pt-3">
+              <div className="text-sm">
                 {error ? (
-                  <div className="flex items-start gap-2.5">
-                    <CursorAvatar />
-                    <div 
-                      className="max-w-[70%] px-3 py-2 rounded-2xl"
-                      style={{ background: theme.bg.quaternary }}
-                    >
-                      <div style={{ color: theme.text.tertiary }}>
-                        {error}
+                  <div>
+                    <CursorAvatarHeader />
+                    <div className="flex items-start sm:gap-2.5 pt-1.5 sm:pt-3">
+                      <div className="hidden sm:block">
+                        <CursorAvatar />
+                      </div>
+                      <div 
+                        className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                        style={{ background: theme.bg.quaternary }}
+                      >
+                        <div style={{ color: theme.text.tertiary }}>
+                          {error}
+                        </div>
                       </div>
                     </div>
                   </div>
                 ) : isPending ? (
                   // Pending state - just show thinking while we wait for agent ID
-                  <div className="flex items-start gap-2.5">
-                    <CursorAvatar />
-                    <div 
-                      className="max-w-[70%] px-3 py-2 rounded-2xl"
-                      style={{ background: theme.bg.quaternary }}
-                    >
-                      <ShimmerText className="text-[13px]">
-                        Thinking
-                      </ShimmerText>
+                  <div>
+                    <CursorAvatarHeader />
+                    <div className="flex items-start sm:gap-2.5 pt-1.5 sm:pt-3">
+                      <div className="hidden sm:block">
+                        <CursorAvatar />
+                      </div>
+                      <div 
+                        className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                        style={{ background: theme.bg.quaternary }}
+                      >
+                        <ShimmerText className="text-[13px]">
+                          Thinking
+                        </ShimmerText>
+                      </div>
                     </div>
                   </div>
                 ) : isLoading ? (
                   // Loading a running agent - show shimmer text
-                  <div className="flex items-start gap-2.5">
-                    <CursorAvatar />
-                    <div 
-                      className="max-w-[70%] px-3 py-2 rounded-2xl"
-                      style={{ background: theme.bg.quaternary }}
-                    >
-                      <ShimmerText className="text-[13px]">
-                        Thinking
-                      </ShimmerText>
+                  <div>
+                    <CursorAvatarHeader />
+                    <div className="flex items-start sm:gap-2.5 pt-1.5 sm:pt-3">
+                      <div className="hidden sm:block">
+                        <CursorAvatar />
+                      </div>
+                      <div 
+                        className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                        style={{ background: theme.bg.quaternary }}
+                      >
+                        <ShimmerText className="text-[13px]">
+                          Thinking
+                        </ShimmerText>
+                      </div>
                     </div>
                   </div>
                 ) : (
