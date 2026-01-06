@@ -9,6 +9,8 @@ import { theme } from '@/lib/theme';
 interface HomeActivityListProps {
   agents: Agent[];
   onSelectAgent: (agent: Agent) => void;
+  /** Optional: prefetch conversation data for an agent (e.g. on hover) */
+  onPrefetchAgent?: (agent: Agent) => void;
   isLoading?: boolean;
   /** Filter agents by this repository. If null, shows all. */
   selectedRepo?: CachedRepo | null;
@@ -182,10 +184,12 @@ function AgentIcon({ agent }: { agent: Agent }) {
 function AgentItem({ 
   agent, 
   onSelect,
+  onPrefetch,
   animationDelay = 0,
 }: { 
   agent: Agent; 
   onSelect: () => void;
+  onPrefetch?: () => void;
   animationDelay?: number;
 }) {
   return (
@@ -196,8 +200,12 @@ function AgentItem({
         animationDelay: `${animationDelay}ms`,
         animationFillMode: 'backwards',
       }}
-      onMouseEnter={(e) => e.currentTarget.style.background = theme.bg.tertiary}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = theme.bg.tertiary;
+        onPrefetch?.();
+      }}
       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+      onFocus={() => onPrefetch?.()}
     >
       <div className="mt-0.5">
         <AgentIcon agent={agent} />
@@ -225,11 +233,13 @@ function DateGroup({
   title, 
   agents, 
   onSelectAgent,
+  onPrefetchAgent,
   startIndex = 0,
 }: { 
   title: string; 
   agents: Agent[]; 
   onSelectAgent: (agent: Agent) => void;
+  onPrefetchAgent?: (agent: Agent) => void;
   startIndex?: number;
 }) {
   if (agents.length === 0) return null;
@@ -248,6 +258,7 @@ function DateGroup({
             key={agent.id} 
             agent={agent} 
             onSelect={() => onSelectAgent(agent)}
+            onPrefetch={onPrefetchAgent ? () => onPrefetchAgent(agent) : undefined}
             animationDelay={(startIndex + idx) * 20}
           />
         ))}
@@ -259,6 +270,7 @@ function DateGroup({
 export function HomeActivityList({ 
   agents, 
   onSelectAgent,
+  onPrefetchAgent,
   isLoading = false,
   selectedRepo,
   hideSearch = false,
@@ -267,27 +279,6 @@ export function HomeActivityList({
   const [searchQuery, setSearchQuery] = useState('');
   const effectiveSearchQuery = externalSearchQuery ?? searchQuery;
   
-  // Track previous repo for loading transition
-  const prevRepoRef = useRef<string | null | undefined>(selectedRepo?.repository);
-  const [isRepoLoading, setIsRepoLoading] = useState(false);
-  
-  // Show loading animation when repo changes
-  useEffect(() => {
-    const prevRepo = prevRepoRef.current;
-    const currentRepo = selectedRepo?.repository;
-    
-    if (prevRepo !== currentRepo && prevRepo !== undefined) {
-      // Show loading state briefly when switching repos
-      setIsRepoLoading(true);
-      const timeout = setTimeout(() => {
-        setIsRepoLoading(false);
-      }, 400); // Brief loading animation
-      prevRepoRef.current = currentRepo;
-      return () => clearTimeout(timeout);
-    }
-    prevRepoRef.current = currentRepo;
-  }, [selectedRepo?.repository]);
-
   // Filter and group agents
   const { today, yesterday, lastWeek, older } = useMemo(() => {
     // Filter by selected repository using robust matching
@@ -349,9 +340,6 @@ export function HomeActivityList({
     return 'No agents yet';
   };
 
-  // Show loading state (either initial load or repo switching)
-  const showLoading = isLoading || isRepoLoading;
-
   return (
     <div className="flex-1 flex flex-col">
       {/* Search bar - only show when not hidden by parent */}
@@ -379,10 +367,10 @@ export function HomeActivityList({
       <div 
         key={selectedRepo?.repository || 'default'}
         data-scroll-container
-        className="flex-1 overflow-y-auto pt-4 pb-44 px-4" 
+        className="flex-1 overflow-y-auto scrollbar-hidden pt-4 pb-44" 
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {showLoading ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <CursorLoader size="lg" className="w-16 h-16" />
           </div>
@@ -395,10 +383,10 @@ export function HomeActivityList({
           </div>
         ) : (
           <>
-            <DateGroup title="Today" agents={today} onSelectAgent={onSelectAgent} startIndex={todayStartIndex} />
-            <DateGroup title="Yesterday" agents={yesterday} onSelectAgent={onSelectAgent} startIndex={yesterdayStartIndex} />
-            <DateGroup title="Last 7 Days" agents={lastWeek} onSelectAgent={onSelectAgent} startIndex={lastWeekStartIndex} />
-            <DateGroup title="Older" agents={older} onSelectAgent={onSelectAgent} startIndex={olderStartIndex} />
+            <DateGroup title="Today" agents={today} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={todayStartIndex} />
+            <DateGroup title="Yesterday" agents={yesterday} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={yesterdayStartIndex} />
+            <DateGroup title="Last 7 Days" agents={lastWeek} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={lastWeekStartIndex} />
+            <DateGroup title="Older" agents={older} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={olderStartIndex} />
           </>
         )}
       </div>

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError } from '@/lib/cursorClient';
+import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError, NotFoundError } from '@/lib/cursorClient';
 import { AgentStep } from '@/lib/cursorSdk';
 import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
+import { useTypewriter } from '@/components/TypewriterText';
 import { theme } from '@/lib/theme';
 
 // Initial loading phases shown before first real message arrives
@@ -135,7 +136,7 @@ function renderWithCodeTags(text: string) {
       return (
         <code 
           key={i} 
-          className="px-1.5 py-0.5 rounded text-inherit font-mono text-[0.9em]"
+          className="px-1.5 py-0.5 rounded text-inherit text-[0.9em] font-mono"
           style={{ background: 'var(--color-theme-bg-tertiary)' }}
         >
           {code}
@@ -144,6 +145,57 @@ function renderWithCodeTags(text: string) {
     }
     return part;
   });
+}
+
+// Agent response with typewriter effect
+function AgentResponseText({ 
+  text, 
+  isActive,
+  skipAnimation = false,
+}: { 
+  text: string; 
+  isActive: boolean;
+  skipAnimation?: boolean;
+}) {
+  const { displayedText, isTyping } = useTypewriter(
+    normalizeText(text), 
+    500, // 500 chars/sec = fast typewriter
+    skipAnimation
+  );
+  
+  // Parse displayed text for code tags
+  const parts = displayedText.split(/(`[^`]+`)/g);
+  const rendered = parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      const code = part.slice(1, -1);
+      return (
+        <code 
+          key={i} 
+          className="px-1.5 py-0.5 rounded text-inherit text-[0.9em] font-mono"
+          style={{ background: 'var(--color-theme-bg-tertiary)' }}
+        >
+          {code}
+        </code>
+      );
+    }
+    return part;
+  });
+
+  return (
+    <>
+      {rendered}
+      {isTyping && isActive && (
+        <span 
+          className="inline-block w-[2px] h-[1.1em] ml-[1px] align-text-bottom"
+          style={{ 
+            backgroundColor: theme.text.primary,
+            opacity: 0.8,
+            animation: 'cursor-blink 0.6s ease-in-out infinite',
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 // Merge consecutive text deltas into single blocks
@@ -183,15 +235,19 @@ function mergeTextSteps(steps: AgentStep[]): AgentStep[] {
 }
 
 // Individual Step Item
-function StepItem({ step }: { step: AgentStep }) {
+function StepItem({ step, isLatest = false }: { step: AgentStep; isLatest?: boolean }) {
   switch (step.type) {
     case 'text':
       return (
         <div 
-          className="text-[16px] md:text-[15px] leading-tight whitespace-pre-wrap"
+          className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
           style={{ color: theme.text.primary }}
         >
-          {renderWithCodeTags(step.content)}
+          <AgentResponseText 
+            text={step.content} 
+            isActive={isLatest}
+            skipAnimation={!isLatest}
+          />
         </div>
       );
 
@@ -280,7 +336,7 @@ function SdkStepsView({
 
   if (steps.length === 0) {
     return (
-      <ShimmerText className="text-[16px] md:text-[15px]">
+      <ShimmerText className="text-[13px] md:text-[12px]">
         Starting
       </ShimmerText>
     );
@@ -289,11 +345,11 @@ function SdkStepsView({
   return (
     <div className="space-y-0.5">
       {mergedSteps.map((step, idx) => (
-        <StepItem key={idx} step={step} />
+        <StepItem key={idx} step={step} isLatest={idx === mergedSteps.length - 1 && step.type === 'text'} />
       ))}
       
       {isActive && (
-        <ShimmerText className="text-[16px] md:text-[15px] pt-2 block">
+        <ShimmerText className="text-[13px] md:text-[12px] pt-2 block">
           {statusMessage}
         </ShimmerText>
       )}
@@ -341,9 +397,8 @@ function CloudAgentView({
     ? initialPhaseMessage 
     : realStatusMessage;
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages.length, scrollRef]);
+  // Note: Scrolling is handled by parent ConversationView component
+  // This effect removed to avoid conflicts with main scroll logic
 
   // Show thinking when: pending, no agent messages yet, or waiting for response to follow-up
   const showThinking = isPending || (isActive && agentMessages.length === 0) || isWaitingForResponse;
@@ -366,16 +421,16 @@ function CloudAgentView({
         const isAfterUser = prevMsg?.type === 'user_message';
 
         if (msg.type === 'user_message') {
-          // User follow-up message - styled like the initial prompt
+          // User follow-up message - bubble style
           return (
             <div key={msg.id} className="flex justify-end pt-4">
               <div 
-                className="rounded-2xl px-4 py-3 max-w-[85%]"
-                style={{ background: 'var(--color-theme-bg-card)' }}
+                className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+                style={{ background: theme.bg.tertiary }}
               >
                 <p 
-                  className="text-[16px] md:text-[15px] leading-relaxed"
-                  style={{ color: 'var(--color-theme-fg)' }}
+                  className="text-[14px] md:text-[13px] leading-relaxed"
+                  style={{ color: theme.text.primary }}
                 >
                   {msg.text}
                 </p>
@@ -384,32 +439,36 @@ function CloudAgentView({
           );
         }
 
-        // Agent message - flows together with comfortable spacing
+        // Agent message - flows together with comfortable spacing, monospace font with typewriter
         return (
           <div 
             key={msg.id} 
-            className={`relative text-[16px] md:text-[15px] leading-relaxed whitespace-pre-wrap transition-colors ${
+            className={`relative text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap transition-colors max-w-[70%] ${
               isAfterUser ? 'pt-3' : 'pt-1'
-            } ${isActiveMessage ? 'shimmer-active' : ''}`}
+            }`}
             style={{ 
               color: isActiveMessage ? theme.text.primary : theme.text.secondary 
             }}
           >
-            {renderWithCodeTags(msg.text)}
+            <AgentResponseText 
+              text={msg.text} 
+              isActive={isActiveMessage}
+              skipAnimation={!isActiveMessage}
+            />
           </div>
         );
       })}
 
       {/* Status indicator - shows REAL agent status/name */}
       {showThinking && (
-        <ShimmerText className="text-[16px] md:text-[15px] pt-1 block">
+        <ShimmerText className="text-[13px] md:text-[12px] pt-1 block">
           {statusMessage}
         </ShimmerText>
       )}
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <ShimmerText className="text-[16px] md:text-[15px] pt-2 block">
+        <ShimmerText className="text-[13px] md:text-[12px] pt-2 block">
           {statusMessage}
         </ShimmerText>
       )}
@@ -417,7 +476,7 @@ function CloudAgentView({
       {/* Summary - only show when finished */}
       {agent?.summary && !isActive && (
         <div 
-          className="text-[16px] md:text-[15px] leading-relaxed pt-1"
+          className="text-[13px] md:text-[12px] leading-[1.7] pt-1 max-w-[70%]"
           style={{ color: theme.text.primary }}
         >
           {renderWithCodeTags(agent.summary)}
@@ -524,6 +583,7 @@ export function ConversationView({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const messageIdsRef = useRef<Set<string>>(new Set());
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
@@ -551,6 +611,32 @@ export function ConversationView({
 
   const isTerminal = agent?.status === 'FINISHED' || agent?.status === 'ERROR' || agent?.status === 'STOPPED' || agent?.status === 'EXPIRED';
   const isActive = agent?.status === 'RUNNING' || agent?.status === 'CREATING' || isPending;
+
+  // Determine if we're loading a past/terminal agent - show full-screen centered loader
+  const isLoadingPastAgent = isLoading && (
+    initialStatus === 'FINISHED' ||
+    initialStatus === 'STOPPED' ||
+    initialStatus === 'ERROR' ||
+    initialStatus === 'EXPIRED'
+  );
+
+  // Best-practice scroll-to-bottom: anchor + scroll container + window fallback
+  const scrollToBottom = useCallback(() => {
+    // 1) Prefer sentinel anchor (scrolls the nearest scrollable ancestor, including window)
+    bottomAnchorRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+
+    // 2) Also force the known scroll container, in case the browser chooses a different ancestor
+    if (scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // 3) Final fallback: if the page itself is scrolling, force the document scroller
+    const scrollingEl = document.scrollingElement;
+    if (scrollingEl) {
+      scrollingEl.scrollTop = scrollingEl.scrollHeight;
+    }
+  }, []);
 
   const fetchAll = useCallback(async (isInitial = false, forceConversation = false): Promise<boolean> => {
     if (!agentId || !apiKey || agentId.startsWith('sdk-')) return false;
@@ -621,7 +707,11 @@ export function ConversationView({
           release();
           return gotData;
         }
-        if (err instanceof RateLimitError || (err instanceof Error && err.message.includes('429'))) {
+        // NotFoundError (409/404) means conversation doesn't exist yet - this is normal for new agents
+        if (err instanceof NotFoundError) {
+          // Silently ignore - conversation will be created when agent starts responding
+          gotData = true; // Consider this successful (just no messages yet)
+        } else if (err instanceof RateLimitError || (err instanceof Error && err.message.includes('429'))) {
           // Back off for 5 seconds before retrying conversation endpoint
           conversationRateLimitedUntilRef.current = Date.now() + 5000;
         }
@@ -763,31 +853,58 @@ export function ConversationView({
     }
   }, [refreshTrigger, agentId, fetchAll, scheduleNextPoll]);
 
+  // Always open at the bottom for any agent activity/conversation.
+  // useLayoutEffect makes this happen before paint once content exists.
+  useLayoutEffect(() => {
+    if (!agentId || isPending) return;
+    if (isLoadingPastAgent) return;
+    // Only scroll once we either have messages or loading has completed.
+    if (messages.length === 0 && isLoading) return;
+    scrollToBottom();
+  }, [agentId, isPending, isLoadingPastAgent, isLoading, messages.length, scrollToBottom]);
+
+  // After-paint fallback for late layout changes (images/video/fonts)
+  useEffect(() => {
+    if (!agentId || isPending) return;
+    if (isLoadingPastAgent) return;
+    if (messages.length === 0 && isLoading) return;
+    const t = setTimeout(scrollToBottom, 0);
+    return () => clearTimeout(t);
+  }, [agentId, isPending, isLoadingPastAgent, isLoading, messages.length, scrollToBottom]);
+
   if (!agentId) {
     return null;
+  }
+
+  if (isLoadingPastAgent) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <CursorLoader size="2xl" />
+      </div>
+    );
   }
 
   return (
     <div 
       ref={scrollRef}
       data-scroll-container
-      className="flex-1 overflow-y-auto flex flex-col"
+      className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden flex flex-col"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Conversation content with consistent padding */}
-      <div className="pt-16 pb-4 space-y-3 px-4">
+      <div className="pt-16 pb-44 space-y-3 px-4">
         {/* Previous conversation turns - show history from continuation chain */}
         {previousTurns.map((turn, turnIdx) => (
           <div key={`turn-${turnIdx}`} className="space-y-2">
-            {/* Previous user prompt */}
+            {/* Previous user prompt - bubble style */}
             <div className="flex justify-end">
               <div 
-                className="rounded-2xl px-4 py-3 max-w-[85%]"
-                style={{ background: 'var(--color-theme-bg-card)' }}
+                className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+                style={{ background: theme.bg.tertiary }}
               >
                 <p 
-                  className="text-[16px] md:text-[15px] leading-relaxed"
-                  style={{ color: 'var(--color-theme-fg)' }}
+                  className="text-[14px] md:text-[13px] leading-relaxed"
+                  style={{ color: theme.text.primary }}
                 >
                   {turn.prompt}
                 </p>
@@ -799,7 +916,7 @@ export function ConversationView({
               {turn.messages.filter(m => m.type === 'assistant_message').map((msg) => (
                 <div 
                   key={msg.id} 
-                  className="text-[16px] md:text-[15px] leading-relaxed whitespace-pre-wrap pt-1"
+                  className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap pt-1 max-w-[70%]"
                   style={{ color: theme.text.tertiary }}
                 >
                   {renderWithCodeTags(msg.text)}
@@ -809,7 +926,7 @@ export function ConversationView({
               {/* Previous turn summary */}
               {turn.summary && (
                 <div 
-                  className="text-[16px] md:text-[15px] leading-relaxed pt-1"
+                  className="text-[13px] md:text-[12px] leading-[1.7] pt-1 max-w-[70%]"
                   style={{ color: theme.text.tertiary }}
                 >
                   {renderWithCodeTags(turn.summary)}
@@ -819,15 +936,15 @@ export function ConversationView({
           </div>
         ))}
         
-        {/* Current user prompt - right aligned, contained */}
+        {/* Current user prompt - bubble style */}
         <div className="flex justify-end">
           <div 
-            className="rounded-2xl px-4 py-3 max-w-[85%]"
-            style={{ background: 'var(--color-theme-bg-card)' }}
+            className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+            style={{ background: theme.bg.tertiary }}
           >
             <p 
-              className="text-[16px] md:text-[15px] leading-relaxed"
-              style={{ color: 'var(--color-theme-fg)' }}
+              className="text-[14px] md:text-[13px] leading-relaxed"
+              style={{ color: theme.text.primary }}
             >
               {prompt}
             </p>
@@ -844,21 +961,14 @@ export function ConversationView({
             </div>
           ) : isPending ? (
             // Pending state - just show thinking while we wait for agent ID
-            <ShimmerText className="text-[16px] md:text-[15px]">
+            <ShimmerText className="text-[13px] md:text-[12px]">
               Thinking
             </ShimmerText>
           ) : isLoading ? (
-            // Check if loading a past/terminal agent - show logo animation
-            // For running agents, show shimmer text instead
-            initialStatus === 'FINISHED' || initialStatus === 'STOPPED' || initialStatus === 'ERROR' || initialStatus === 'EXPIRED' ? (
-              <div className="flex items-center justify-center py-8">
-                <CursorLoader size="lg" />
-              </div>
-            ) : (
-              <ShimmerText className="text-[16px] md:text-[15px]">
-                Thinking
-              </ShimmerText>
-            )
+            // Loading a running agent - show shimmer text
+            <ShimmerText className="text-[13px] md:text-[12px]">
+              Thinking
+            </ShimmerText>
           ) : (
             <CloudAgentView
               agent={agent}
@@ -870,6 +980,9 @@ export function ConversationView({
             />
           )}
         </div>
+        
+        {/* Bottom anchor element for reliable scrolling */}
+        <div ref={bottomAnchorRef} className="h-0" aria-hidden="true" />
       </div>
     </div>
   );

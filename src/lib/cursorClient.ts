@@ -10,6 +10,7 @@ import {
   RateLimitError,
   AuthError,
   MalformedResponseError,
+  NotFoundError,
 } from './cursorTypes';
 
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
@@ -98,6 +99,12 @@ async function fetchWithResilience<T>(
 
         if (res.status === 401 || res.status === 403) {
           throw new AuthError(`Invalid API key (${res.status})`);
+        }
+
+        // 409 Conflict typically means the resource doesn't exist yet
+        // (e.g., conversation for a newly created agent)
+        if (res.status === 409 || res.status === 404) {
+          throw new NotFoundError(`Resource not found (${res.status})`);
         }
 
         if (res.status === 429) {

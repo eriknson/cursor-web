@@ -1,7 +1,7 @@
 'use client';
 
 interface CursorLoaderProps {
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   className?: string;
   loop?: boolean;
 }
@@ -10,6 +10,8 @@ const sizeMap = {
   sm: 'w-4 h-4',
   md: 'w-8 h-8',
   lg: 'w-12 h-12',
+  xl: 'w-20 h-20',
+  '2xl': 'w-32 h-32',
 };
 
 export function CursorLoader({ size = 'md', className = '', loop = true }: CursorLoaderProps) {

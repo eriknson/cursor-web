@@ -50,6 +50,37 @@ function getRepoDisplayFromAgent(agent: Agent): string {
   return repository;
 }
 
+// Normalize repository string for comparison
+// Handles formats like "github.com/owner/repo", "owner/repo", or just "repo"
+function normalizeRepo(repo: string): { full: string; name: string; ownerAndName: string } {
+  const normalized = repo.toLowerCase().trim().replace(/\/+$/, '');
+  const parts = normalized.split('/');
+  const name = parts[parts.length - 1] || normalized;
+
+  let ownerAndName = name;
+  if (parts.length >= 2) {
+    const owner = parts[parts.length - 2];
+    if (owner && owner !== 'github.com') {
+      ownerAndName = `${owner}/${name}`;
+    }
+  }
+
+  return { full: normalized, name, ownerAndName };
+}
+
+function agentMatchesRepo(agent: Agent, repo: CachedRepo): boolean {
+  const agentRepo = normalizeRepo(agent.source.repository);
+  const selected = normalizeRepo(repo.repository);
+
+  if (agentRepo.full === selected.full) return true;
+  if (agentRepo.ownerAndName === selected.ownerAndName) return true;
+  if (agentRepo.name.length > 2 && agentRepo.name === selected.name) return true;
+  if (agentRepo.full.endsWith(`/${selected.name}`)) return true;
+  if (selected.full.endsWith(`/${agentRepo.name}`)) return true;
+
+  return false;
+}
+
 export default function Home() {
   // Auth state
   const [isInitializing, setIsInitializing] = useState(true);
@@ -84,6 +115,7 @@ export default function Home() {
 
   // Preloaded agent data cache - keyed by agent ID
   const [agentCache, setAgentCache] = useState<Record<string, { agent: Agent; messages: Message[] }>>({});
+  const agentPrefetchInFlightRef = useRef<Set<string>>(new Set());
 
   // Conversation history for continuation chains
   const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([]);
@@ -182,6 +214,33 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [apiKey, fetchRuns]);
 
+  const prefetchAgentConversation = useCallback(async (agent: Agent) => {
+    if (!apiKey) return;
+    if (!agent?.id) return;
+
+    // Already cached
+    if (agentCache[agent.id]) return;
+
+    // Deduplicate in-flight requests
+    if (agentPrefetchInFlightRef.current.has(agent.id)) return;
+    agentPrefetchInFlightRef.current.add(agent.id);
+
+    try {
+      const conversation = await getAgentConversation(apiKey, agent.id);
+      setAgentCache((prev) => {
+        if (prev[agent.id]) return prev;
+        return { ...prev, [agent.id]: { agent, messages: conversation.messages || [] } };
+      });
+    } catch (err) {
+      // Silently fail preloading - conversation will fetch on open
+      if (err instanceof AuthError) {
+        handleAuthFailure();
+      }
+    } finally {
+      agentPrefetchInFlightRef.current.delete(agent.id);
+    }
+  }, [apiKey, agentCache, handleAuthFailure]);
+
   // Preload agent data for recent cloud runs
   useEffect(() => {
     if (!apiKey || runs.length === 0) return;
@@ -189,50 +248,118 @@ export default function Home() {
     // Preload first 5 recent runs (runs are already Agent[] from API)
     const toPreload = runs.slice(0, 5);
 
-    const preloadAgent = async (agent: Agent) => {
-      try {
-        const conversation = await getAgentConversation(apiKey, agent.id);
-
-        setAgentCache((prev) => {
-          // Skip if already cached (check inside setter to avoid race)
-          if (prev[agent.id]) return prev;
-          return {
-            ...prev,
-            [agent.id]: { agent, messages: conversation.messages || [] },
-          };
-        });
-      } catch {
-        // Silently fail preloading - conversation will fetch on open
-      }
-    };
-
     // Stagger preloads to avoid rate limits
     toPreload.forEach((agent, idx) => {
       setTimeout(() => {
-        // Check cache before making request
-        setAgentCache((prev) => {
-          if (!prev[agent.id]) {
-            preloadAgent(agent);
-          }
-          return prev;
-        });
+        prefetchAgentConversation(agent);
       }, idx * 500);
     });
-  }, [apiKey, runs]);
+  }, [apiKey, runs, prefetchAgentConversation]);
 
-  // Sort repos by most recent push (from GitHub)
+  // Normalize repository string to "owner/repo" format for consistent matching
+  const normalizeRepoKey = (repo: string) => {
+    // Handle "github.com/owner/repo" or "owner/repo" formats
+    const parts = repo.split('/');
+    if (parts.length >= 3 && parts[0].includes('github')) {
+      return `${parts[1]}/${parts[2]}`;
+    }
+    if (parts.length >= 2) {
+      return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+    }
+    return repo;
+  };
+
+  // Build a map of repo -> most recent agent activity timestamp
+  // This gives us the actual "last used" time for each repo
+  const repoLastUsedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const agent of runs) {
+      const repoKey = normalizeRepoKey(agent.source.repository);
+      const timestamp = new Date(agent.createdAt).getTime();
+      const existing = map.get(repoKey);
+      if (!existing || timestamp > existing) {
+        map.set(repoKey, timestamp);
+      }
+    }
+    return map;
+  }, [runs]);
+
+  // Sort repos by: 1) has agent activity, 2) recent agent activity, 3) pushedAt, 4) alphabetical
   const sortedRepos = useMemo(() => {
     return [...repos].sort((a, b) => {
-      const aTime = a.pushedAt ? new Date(a.pushedAt).getTime() : 0;
-      const bTime = b.pushedAt ? new Date(b.pushedAt).getTime() : 0;
+      const aKey = normalizeRepoKey(a.repository);
+      const bKey = normalizeRepoKey(b.repository);
+      const aLastUsed = repoLastUsedMap.get(aKey) ?? 0;
+      const bLastUsed = repoLastUsedMap.get(bKey) ?? 0;
       
-      if (aTime !== bTime) {
-        return bTime - aTime; // Most recently pushed first
+      // Primary: repos with agent activity come first
+      const aHasActivity = aLastUsed > 0;
+      const bHasActivity = bLastUsed > 0;
+      if (aHasActivity !== bHasActivity) {
+        return aHasActivity ? -1 : 1; // Repos with activity first
       }
       
+      // Secondary: among repos with activity, sort by most recent
+      if (aLastUsed !== bLastUsed) {
+        return bLastUsed - aLastUsed; // Most recently used first
+      }
+      
+      // Tertiary: pushedAt from API (for repos not yet used with agents)
+      const aPushedAt = a.pushedAt ? new Date(a.pushedAt).getTime() : 0;
+      const bPushedAt = b.pushedAt ? new Date(b.pushedAt).getTime() : 0;
+      
+      if (aPushedAt !== bPushedAt) {
+        return bPushedAt - aPushedAt; // Most recently pushed first
+      }
+      
+      // Final fallback: alphabetical
       return a.name.localeCompare(b.name);
     });
-  }, [repos]);
+  }, [repos, repoLastUsedMap]);
+
+  // Prefetch the latest agent conversation for repos with recent activity so opening feels instant.
+  useEffect(() => {
+    if (!apiKey || runs.length === 0 || sortedRepos.length === 0) return;
+
+    const PREFETCH_REPO_COUNT = 6;
+    const PREFETCH_AGENTS_PER_REPO = 1;
+
+    // Repos with activity, sorted by most recent activity (same ordering as picker)
+    const reposWithActivity = sortedRepos
+      .filter((r) => (repoLastUsedMap.get(normalizeRepoKey(r.repository)) ?? 0) > 0)
+      .slice(0, PREFETCH_REPO_COUNT);
+
+    const agentsToPrefetch: Agent[] = [];
+
+    for (const repo of reposWithActivity) {
+      const latestForRepo = runs
+        .filter((a) => agentMatchesRepo(a, repo))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, PREFETCH_AGENTS_PER_REPO);
+
+      agentsToPrefetch.push(...latestForRepo);
+    }
+
+    // Stagger to avoid rate limits / bursts
+    agentsToPrefetch.forEach((agent, idx) => {
+      setTimeout(() => prefetchAgentConversation(agent), idx * 450);
+    });
+  }, [apiKey, runs, sortedRepos, repoLastUsedMap, prefetchAgentConversation]);
+
+  // When the user picks a repo, eagerly prefetch a couple of its most recent conversations.
+  useEffect(() => {
+    if (!apiKey || !selectedRepo || runs.length === 0) return;
+
+    const PREFETCH_AGENTS_FOR_SELECTED_REPO = 3;
+    const latestForRepo = runs
+      .filter((a) => agentMatchesRepo(a, selectedRepo))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, PREFETCH_AGENTS_FOR_SELECTED_REPO);
+
+    latestForRepo.forEach((agent, idx) => {
+      setTimeout(() => prefetchAgentConversation(agent), idx * 350);
+    });
+  }, [apiKey, selectedRepo, runs, prefetchAgentConversation]);
 
   // Auto-select default repo when repos are loaded
   useEffect(() => {
@@ -263,28 +390,48 @@ export default function Home() {
     try {
       const repoList = await listRepositories(key);
       
-      // Fetch pushedAt from GitHub in batches to avoid rate limits
-      // GitHub allows 60 requests/hour for unauthenticated users
+      // Map repos, using pushedAt from Cursor API if available
+      // Only fetch from GitHub for repos without pushedAt (as fallback)
       const BATCH_SIZE = 10;
       const mappedRepos: CachedRepo[] = [];
       
-      for (let i = 0; i < repoList.length; i += BATCH_SIZE) {
-        const batch = repoList.slice(i, i + BATCH_SIZE);
+      // Repos that need GitHub fallback (no pushedAt from Cursor API)
+      const needsGitHubInfo: { repo: typeof repoList[0]; index: number }[] = [];
+      
+      // First pass: map all repos, note which need GitHub fallback
+      for (let i = 0; i < repoList.length; i++) {
+        const r = repoList[i];
+        mappedRepos.push({
+          owner: r.owner,
+          name: r.name,
+          repository: r.repository,
+          pushedAt: r.pushedAt, // Use Cursor API's pushedAt if available
+        });
+        if (!r.pushedAt) {
+          needsGitHubInfo.push({ repo: r, index: i });
+        }
+      }
+      
+      // Second pass: fetch pushedAt from GitHub for repos without it (in batches)
+      // GitHub allows 60 requests/hour for unauthenticated users
+      for (let i = 0; i < needsGitHubInfo.length; i += BATCH_SIZE) {
+        const batch = needsGitHubInfo.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
-          batch.map(async (r) => {
-            const githubInfo = await fetchGitHubRepoInfo(r.owner, r.name);
-            return {
-              owner: r.owner,
-              name: r.name,
-              repository: r.repository,
-              pushedAt: githubInfo?.pushedAt,
-            };
+          batch.map(async ({ repo, index }) => {
+            const githubInfo = await fetchGitHubRepoInfo(repo.owner, repo.name);
+            return { index, pushedAt: githubInfo?.pushedAt };
           })
         );
-        mappedRepos.push(...batchResults);
+        
+        // Update the repos with GitHub data
+        for (const { index, pushedAt } of batchResults) {
+          if (pushedAt) {
+            mappedRepos[index].pushedAt = pushedAt;
+          }
+        }
         
         // Small delay between batches to be nice to the API
-        if (i + BATCH_SIZE < repoList.length) {
+        if (i + BATCH_SIZE < needsGitHubInfo.length) {
           await new Promise(r => setTimeout(r, 100));
         }
       }
@@ -745,7 +892,9 @@ export default function Home() {
 
   // Main app
   return (
-    <div className="min-h-dvh flex flex-col" style={{ background: theme.bg.main }}>
+    // App shell uses a fixed viewport height and internal scroll containers.
+    // This prevents the window from being the scroll container (which breaks chat "scroll to bottom" on open).
+    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: theme.bg.main }}>
       {debugBlur && (
         <div className="fixed left-4 right-4 top-28 z-[9999] pointer-events-none">
           <div
@@ -760,59 +909,70 @@ export default function Home() {
       )}
 
       {/* ====== TOP EDGE: Header + Search ====== */}
-      <div className="fixed top-0 left-0 right-0 z-40 pt-safe" style={{ background: theme.bg.main }}>
+      <div 
+        className="fixed top-0 left-0 right-0 z-40 pt-safe" 
+        style={{ 
+          background: isInChatView 
+            ? 'color-mix(in oklab, var(--color-theme-bg) 80%, transparent)' 
+            : theme.bg.main,
+          backdropFilter: isInChatView ? 'blur(20px) saturate(180%)' : undefined,
+          WebkitBackdropFilter: isInChatView ? 'blur(20px) saturate(180%)' : undefined,
+        }}
+      >
         <div>
           {/* Header bar */}
-          <div className="flex items-center justify-between px-4 h-14">
-            {/* Left side */}
-            {isInChatView ? (
-              <div className="flex items-center gap-3 flex-1">
-                <button
-                  onClick={handleBackToHome}
-                  className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer"
-                  style={{ color: theme.text.secondary }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = theme.text.primary;
-                    e.currentTarget.style.background = theme.bg.tertiary;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = theme.text.secondary;
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                  title="Back"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <RepoPicker
-                repos={sortedRepos}
-                selectedRepo={selectedRepo}
-                onSelectRepo={handleSelectRepo}
-                isLoading={isLoadingRepos}
-              />
-            )}
+          <div className="px-4 h-14 flex items-center">
+            <div className="max-w-[700px] mx-auto w-full flex items-center justify-between">
+              {/* Left side */}
+              {isInChatView ? (
+                <div className="flex items-center gap-3 flex-1">
+                  <button
+                    onClick={handleBackToHome}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer"
+                    style={{ color: theme.text.secondary }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = theme.text.primary;
+                      e.currentTarget.style.background = theme.bg.tertiary;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = theme.text.secondary;
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                    title="Back"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <RepoPicker
+                  repos={sortedRepos}
+                  selectedRepo={selectedRepo}
+                  onSelectRepo={handleSelectRepo}
+                  isLoading={isLoadingRepos}
+                />
+              )}
 
-            {/* Center - Title (chat view only) */}
-            {isInChatView && (
-              <div className="flex-1 text-center px-2">
-                <h1 className="text-[15px] font-medium truncate" style={{ color: theme.text.primary }}>
-                  {activeAgentName || 'Agent'}
-                </h1>
-                <p className="text-xs truncate" style={{ color: theme.text.tertiary }}>
-                  {activeAgentRepo || (launchRepo ? `${launchRepo.owner}/${launchRepo.name}` : 'repository')}
-                </p>
+              {/* Center - Title (chat view only) */}
+              {isInChatView && (
+                <div className="flex-1 text-center px-2">
+                  <h1 className="text-[15px] font-medium truncate" style={{ color: theme.text.primary }}>
+                    {activeAgentName || 'Agent'}
+                  </h1>
+                  <p className="text-xs truncate" style={{ color: theme.text.tertiary }}>
+                    {activeAgentRepo || (launchRepo ? `${launchRepo.owner}/${launchRepo.name}` : 'repository')}
+                  </p>
+                </div>
+              )}
+              
+              {/* Right side */}
+              <div className={isInChatView ? 'flex-1 flex justify-end' : ''}>
+                <UserAvatarDropdown
+                  userEmail={userInfo?.userEmail}
+                  onLogout={handleLogout}
+                />
               </div>
-            )}
-            
-            {/* Right side */}
-            <div className={isInChatView ? 'flex-1 flex justify-end' : ''}>
-              <UserAvatarDropdown
-                userEmail={userInfo?.userEmail}
-                onLogout={handleLogout}
-              />
             </div>
           </div>
 
@@ -827,7 +987,7 @@ export default function Home() {
                   onChange={(e) => setRunsSearchQuery(e.target.value)}
                   className="w-full h-11 px-4 rounded-xl text-[15px] focus:outline-none transition-colors"
                   style={{
-                    background: theme.bg.tertiary,
+                    background: theme.bg.quaternary,
                     color: theme.text.primary,
                   }}
                 />
@@ -839,7 +999,7 @@ export default function Home() {
 
       {/* ====== MAIN CONTENT (z-20, below blur overlays) ====== */}
       <main 
-        className="flex-1 flex flex-col relative z-20"
+        className="flex-1 min-h-0 flex flex-col relative z-20"
         style={{ 
           paddingTop: isInChatView 
             ? 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' 
@@ -848,8 +1008,9 @@ export default function Home() {
         }}
       >
         {isInChatView ? (
-          <div className="flex-1 flex flex-col max-w-[700px] mx-auto w-full px-4">
-            <ConversationView
+          <div className="flex-1 min-h-0 flex flex-col max-w-[700px] mx-auto w-full px-4">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <ConversationView
               agentId={activeAgentId}
               apiKey={apiKey}
               prompt={activePrompt}
@@ -863,23 +1024,27 @@ export default function Home() {
               refreshTrigger={refreshTrigger}
               initialStatus={activeAgentStatus || undefined}
             />
+            </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col max-w-[700px] mx-auto w-full">
-            <HomeActivityList
-              agents={runs}
-              onSelectAgent={handleSelectAgent}
-              isLoading={isLoadingRuns}
-              selectedRepo={selectedRepo}
-              hideSearch={true}
-              searchQuery={runsSearchQuery}
-            />
+          <div className="flex-1 flex flex-col px-4">
+            <div className="max-w-[700px] mx-auto w-full flex-1 min-h-0 flex flex-col">
+              <HomeActivityList
+                agents={runs}
+                onSelectAgent={handleSelectAgent}
+                onPrefetchAgent={prefetchAgentConversation}
+                isLoading={isLoadingRuns}
+                selectedRepo={selectedRepo}
+                hideSearch={true}
+                searchQuery={runsSearchQuery}
+              />
+            </div>
           </div>
         )}
       </main>
 
       {/* ====== BOTTOM EDGE: Composer ====== */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 pb-safe" style={{ background: theme.bg.main }}>
+      <div className="fixed bottom-0 left-0 right-0 z-40 pb-safe">
         <div className="px-4 pb-4 pt-2">
           <div className="max-w-[700px] mx-auto">
             <Composer

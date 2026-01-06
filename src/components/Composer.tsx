@@ -159,7 +159,7 @@ export function Composer({
         style={{
           background: hasContent 
             ? 'var(--color-theme-bg-card)' 
-            : 'color-mix(in oklab, var(--color-theme-bg) 40%, transparent)',
+            : 'color-mix(in oklab, var(--color-theme-bg) 50%, rgba(128, 128, 128, 0.12))',
           border: hasContent 
             ? '1px solid var(--color-theme-border-primary)' 
             : '1px solid var(--color-theme-border-tertiary)',

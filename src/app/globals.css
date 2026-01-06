@@ -273,6 +273,16 @@ select:focus-visible {
   }
 }
 
+/* Typewriter cursor blink */
+@keyframes cursor-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 /* Skeleton shimmer for loading states */
 .skeleton-shimmer {
   position: relative;
@@ -394,5 +404,24 @@ button, a, input, textarea, select {
 
 .scrollbar-hidden::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Frosted glass effect for chat bubbles */
+.frosted-glass {
+  background: color-mix(in oklab, var(--color-theme-bg-card) 70%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid color-mix(in oklab, var(--color-theme-fg) 8%, transparent);
+}
+
+/* Frosted glass effect for chat bubbles */
+.frosted-glass {
+  background: color-mix(in oklab, var(--color-theme-bg-card) 65%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 
+    0 2px 16px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid color-mix(in oklab, var(--color-theme-border-tertiary) 50%, transparent);
 }
 

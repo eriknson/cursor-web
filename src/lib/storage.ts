@@ -15,7 +15,7 @@ export interface CachedRepo {
   owner: string;
   name: string;
   repository: string;
-  pushedAt?: string; // ISO timestamp of last push from GitHub
+  pushedAt?: string; // ISO timestamp of last push (from Cursor API or GitHub)
 }
 
 type SafeStorage = {
