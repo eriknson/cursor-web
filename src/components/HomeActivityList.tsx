@@ -201,7 +201,7 @@ function AgentItem({
         animationFillMode: 'backwards',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = theme.bg.tertiary;
+        e.currentTarget.style.background = theme.bg.card;
         onPrefetch?.();
       }}
       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
@@ -341,7 +341,7 @@ export function HomeActivityList({
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* Search bar - only show when not hidden by parent */}
       {!hideSearch && (
         <div 

@@ -737,6 +737,22 @@ export default function Home() {
             : agent
         )
       );
+      // Also update the agent cache so it stays in sync
+      setAgentCache(prev => {
+        const cached = prev[agentId];
+        if (!cached) return prev;
+        return {
+          ...prev,
+          [agentId]: {
+            ...cached,
+            agent: {
+              ...cached.agent,
+              ...(updates.status && { status: updates.status as Agent['status'] }),
+              ...(updates.name && { name: updates.name }),
+            },
+          },
+        };
+      });
     }
   }, []);
 
@@ -931,6 +947,7 @@ export default function Home() {
                 <UserAvatarDropdown
                   userEmail={userInfo?.userEmail}
                   onLogout={handleLogout}
+                  showEmail={!isInChatView}
                 />
               </div>
             </div>
@@ -942,12 +959,12 @@ export default function Home() {
               <div className="max-w-[700px] mx-auto">
                 <input
                   type="text"
-                  placeholder="Search Agents"
+                  placeholder="Search agents..."
                   value={runsSearchQuery}
                   onChange={(e) => setRunsSearchQuery(e.target.value)}
                   className="w-full h-11 px-4 rounded-xl text-[15px] focus:outline-none transition-colors"
                   style={{
-                    background: theme.bg.quaternary,
+                    background: '#1f1f1f',
                     color: theme.text.primary,
                   }}
                 />
@@ -959,7 +976,7 @@ export default function Home() {
 
       {/* ====== MAIN CONTENT (z-20, below blur overlays) ====== */}
       <main 
-        className="flex-1 min-h-0 flex flex-col relative z-20"
+        className="flex-1 min-h-0 flex flex-col relative z-20 overflow-hidden"
         style={{ 
           paddingTop: isInChatView 
             ? 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' 
@@ -987,7 +1004,7 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col px-4">
+          <div className="flex-1 min-h-0 flex flex-col px-4">
             <div className="max-w-[700px] mx-auto w-full flex-1 min-h-0 flex flex-col">
               <HomeActivityList
                 agents={runs}

@@ -871,15 +871,32 @@ export function ConversationView({
       rateLimitedRef.current = false;
 
       if (preloadedData) {
-        setAgent(preloadedData.agent);
-        setMessages(preloadedData.messages);
-        messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
-        setIsLoading(false);
-        onStatusChangeRef.current?.(preloadedData.agent.status);
+        // Check if preloaded data is stale: parent says terminal but cache says active
+        const isPreloadedActive = preloadedData.agent.status === 'RUNNING' || preloadedData.agent.status === 'CREATING';
+        const isInitialTerminal = initialStatus === 'FINISHED' || initialStatus === 'STOPPED' || initialStatus === 'ERROR' || initialStatus === 'EXPIRED';
         
-        const isActiveAgent = preloadedData.agent.status === 'RUNNING' || preloadedData.agent.status === 'CREATING';
-        if (isActiveAgent) {
-          scheduleNextPoll();
+        if (isPreloadedActive && isInitialTerminal) {
+          // Cache is stale - use corrected status for immediate UI, then fetch fresh data
+          const correctedAgent = { ...preloadedData.agent, status: initialStatus as Agent['status'] };
+          setAgent(correctedAgent);
+          setMessages(preloadedData.messages);
+          messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
+          setIsLoading(false);
+          onStatusChangeRef.current?.(initialStatus);
+          // Fetch fresh data to get summary and complete agent info
+          fetchAll(false, true);
+        } else {
+          // Normal path: preloaded data is fresh
+          setAgent(preloadedData.agent);
+          setMessages(preloadedData.messages);
+          messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
+          setIsLoading(false);
+          onStatusChangeRef.current?.(preloadedData.agent.status);
+          
+          const isActiveAgent = preloadedData.agent.status === 'RUNNING' || preloadedData.agent.status === 'CREATING';
+          if (isActiveAgent) {
+            scheduleNextPoll();
+          }
         }
       } else {
         setAgent(null);
@@ -990,7 +1007,7 @@ export function ConversationView({
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Conversation content with consistent padding */}
-      <div className="pt-16 pb-44 px-2 sm:px-4">
+      <div className="pt-16 pb-20 px-2 sm:px-4">
         {/* Previous conversation turns - show history from continuation chain */}
         {previousTurns.map((turn, turnIdx) => {
           const isFirstTurn = turnIdx === 0;

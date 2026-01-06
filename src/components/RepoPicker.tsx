@@ -121,12 +121,13 @@ export function RepoPicker({
       {/* Dropdown */}
       {isOpen && (
         <div 
-          className="absolute top-full left-0 mt-1.5 w-64 max-h-72 overflow-y-auto scrollbar-hidden rounded-md shadow-2xl z-50"
+          className="absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto scrollbar-hidden rounded-xl shadow-2xl z-50 animate-dropdown-in"
           style={{
-            background: 'rgba(20, 18, 11, 0.75)',
-            backdropFilter: 'blur(20px) saturate(1.4)',
-            WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
-            border: '1px solid rgba(255, 255, 255, 0.06)',
+            background: 'rgba(20, 18, 11, 0.85)',
+            backdropFilter: 'blur(24px) saturate(1.5)',
+            WebkitBackdropFilter: 'blur(24px) saturate(1.5)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            transformOrigin: 'top left',
           }}
         >
           {repos.length === 0 && !showAllOption ? (
@@ -140,7 +141,7 @@ export function RepoPicker({
                 <>
                   <button
                     onClick={() => handleSelect(ALL_REPOS_OPTION)}
-                    className="w-full text-left px-3 py-1.5 text-[13px] transition-colors cursor-pointer flex items-center gap-2"
+                    className="w-full text-left px-3 py-2 text-[15px] font-medium transition-colors cursor-pointer flex items-center gap-2"
                     style={{
                       color: isAllSelected ? theme.text.primary : theme.text.secondary,
                       background: isAllSelected ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
@@ -175,7 +176,7 @@ export function RepoPicker({
                   <button
                     key={repo.repository}
                     onClick={() => handleSelect(repo)}
-                    className="w-full text-left px-3 py-1.5 text-[13px] transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 transition-colors cursor-pointer"
                     style={{
                       color: isSelected ? theme.text.primary : theme.text.secondary,
                       background: isSelected ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
@@ -194,10 +195,10 @@ export function RepoPicker({
                     }}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate">{repo.name}</span>
+                      <span className="text-[15px] font-medium truncate">{repo.name}</span>
                       {relativeTime && (
                         <span 
-                          className="text-[11px] shrink-0" 
+                          className="text-sm shrink-0" 
                           style={{ color: theme.text.tertiary }}
                         >
                           {relativeTime}
@@ -205,7 +206,7 @@ export function RepoPicker({
                       )}
                     </div>
                     <span 
-                      className="text-[11px] truncate block"
+                      className="text-sm truncate block mt-0.5"
                       style={{ color: theme.text.tertiary }}
                     >
                       {repo.owner}

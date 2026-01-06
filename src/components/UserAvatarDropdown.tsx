@@ -7,9 +7,10 @@ interface UserAvatarDropdownProps {
   userEmail?: string;
   userName?: string;
   onLogout: () => void;
+  showEmail?: boolean;
 }
 
-export function UserAvatarDropdown({ userEmail, userName, onLogout }: UserAvatarDropdownProps) {
+export function UserAvatarDropdown({ userEmail, userName, onLogout, showEmail = false }: UserAvatarDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   
@@ -38,8 +39,8 @@ export function UserAvatarDropdown({ userEmail, userName, onLogout }: UserAvatar
 
   return (
     <div className="relative flex items-center gap-3" ref={menuRef}>
-      {/* Email - hidden on small viewports */}
-      {userEmail && (
+      {/* Email - hidden on small viewports, only shown when showEmail is true */}
+      {showEmail && userEmail && (
         <span 
           className="hidden min-[500px]:block text-sm truncate max-w-48"
           style={{ color: theme.text.tertiary }}
