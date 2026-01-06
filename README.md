@@ -13,7 +13,7 @@ A web interface for launching and managing Cursor Cloud Agents.
 
 Why don't penguins like talking to strangers at parties? Because they break the ice!
 
-## Setup
+## Development Setup
 
 1. Install dependencies:
    ```bash
@@ -30,3 +30,60 @@ Why don't penguins like talking to strangers at parties? Because they break the 
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
+
+## Production Deployment
+
+### Build
+
+Build the production bundle:
+```bash
+npm run build
+```
+
+### Environment Variables
+
+No environment variables are required for basic operation. The application runs entirely client-side with API keys stored in the browser's localStorage.
+
+Optional environment variables:
+- `NODE_ENV`: Set to `production` for production builds (automatically set by most deployment platforms)
+
+### Deployment
+
+This is a Next.js application that can be deployed to:
+
+- **Vercel** (recommended): Connect your GitHub repository and deploy automatically
+- **Netlify**: Use the Next.js build preset
+- **Docker**: Build with `docker build -t cursor-web .` (requires Dockerfile)
+- **Any Node.js hosting**: Run `npm run build && npm start`
+
+### Health Check
+
+The application includes a health check endpoint at `/api/health` for monitoring and load balancer health checks.
+
+### Security Features
+
+- ✅ Security headers (HSTS, X-Frame-Options, CSP, etc.)
+- ✅ API route validation and rate limiting
+- ✅ Input sanitization and path traversal protection
+- ✅ Error boundaries for graceful error handling
+- ✅ Request size limits and timeout protection
+
+### Monitoring
+
+- Vercel Analytics is integrated for usage tracking
+- Error logging is configured (can be extended with Sentry or similar)
+- Health check endpoint available at `/api/health`
+
+### Performance
+
+- Optimized Next.js build with production optimizations
+- Image optimization enabled
+- Static asset caching configured
+- Code splitting and lazy loading
+
+## Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint

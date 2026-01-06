@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Analytics } from '@vercel/analytics/next';
 import { Toaster } from 'sonner';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -68,19 +69,21 @@ export default function RootLayout({
           color: 'var(--color-theme-fg)',
         }}
       >
-        {children}
-        <Toaster
-          theme="dark"
-          position="top-center"
-          toastOptions={{
-            style: {
-              background: 'var(--color-theme-bg-card)',
-              border: '1px solid var(--color-theme-border-primary)',
-              color: 'var(--color-theme-fg)',
-            },
-          }}
-        />
-        <Analytics />
+        <ErrorBoundary>
+          {children}
+          <Toaster
+            theme="dark"
+            position="top-center"
+            toastOptions={{
+              style: {
+                background: 'var(--color-theme-bg-card)',
+                border: '1px solid var(--color-theme-border-primary)',
+                color: 'var(--color-theme-fg)',
+              },
+            }}
+          />
+          <Analytics />
+        </ErrorBoundary>
       </body>
     </html>
   );
