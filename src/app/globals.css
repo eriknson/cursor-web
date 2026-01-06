@@ -283,6 +283,20 @@ select:focus-visible {
   }
 }
 
+/* Pulsing opacity animation for static loader fallback */
+@keyframes pulse-opacity {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-opacity {
+  animation: pulse-opacity 1.5s ease-in-out infinite;
+}
+
 /* Skeleton shimmer for loading states */
 .skeleton-shimmer {
   position: relative;

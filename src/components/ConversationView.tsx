@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import Image from 'next/image';
 import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError, NotFoundError } from '@/lib/cursorClient';
 import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
@@ -10,8 +11,12 @@ import { theme } from '@/lib/theme';
 import { trackGitHubLinkClick } from '@/lib/analytics';
 
 // Cursor cube avatar for agent messages
+// SVG aspect ratio: 466.73 x 532.09 (width x height) ≈ 0.877:1
 function CursorAvatar({ size = 24, noMargin = false }: { size?: number; noMargin?: boolean }) {
-  const iconSize = Math.round(size * 0.55);
+  // Calculate icon dimensions preserving SVG aspect ratio (taller than wide)
+  const iconHeight = Math.round(size * 0.6);
+  const iconWidth = Math.round(iconHeight * (466.73 / 532.09));
+  
   return (
     <div 
       className="flex-shrink-0 rounded-full flex items-center justify-center"
@@ -22,12 +27,18 @@ function CursorAvatar({ size = 24, noMargin = false }: { size?: number; noMargin
         background: 'rgba(255, 255, 255, 0.08)',
       }}
     >
-      <img 
+      <Image 
         src="/cursor-cube.svg" 
         alt="" 
-        width={iconSize} 
-        height={iconSize}
-        style={{ opacity: 0.85 }}
+        width={iconWidth}
+        height={iconHeight}
+        className="opacity-85"
+        style={{
+          width: iconWidth,
+          height: iconHeight,
+        }}
+        priority
+        unoptimized // SVGs don't need optimization and this prevents quality loss
       />
     </div>
   );
@@ -36,7 +47,7 @@ function CursorAvatar({ size = 24, noMargin = false }: { size?: number; noMargin
 // Avatar header for mobile - shows avatar with "Cursor" label above first message
 function CursorAvatarHeader() {
   return (
-    <div className="flex items-center gap-2 pt-3 sm:hidden">
+    <div className="flex items-center gap-1.5 pt-3 sm:hidden">
       <CursorAvatar size={20} noMargin />
       <span 
         className="text-xs font-medium"
