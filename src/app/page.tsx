@@ -916,10 +916,10 @@ export default function Home() {
         <div>
           {/* Header bar */}
           <div className="px-4 h-14 flex items-center">
-            <div className="max-w-[700px] mx-auto w-full flex items-center justify-between">
+            <div className="max-w-[700px] mx-auto w-full flex items-center justify-between gap-3">
               {/* Left side */}
               {isInChatView ? (
-                <div className="flex items-center gap-3 flex-1">
+                <div className="flex-shrink-0">
                   <button
                     onClick={handleBackToHome}
                     className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer"
@@ -948,20 +948,20 @@ export default function Home() {
                 />
               )}
 
-              {/* Center - Title (chat view only) */}
+              {/* Center - Title (chat view only) - fills available space, truncates when needed */}
               {isInChatView && (
-                <div className="flex-1 text-center px-2">
-                  <h1 className="text-[15px] font-medium truncate" style={{ color: theme.text.primary }}>
+                <div className="flex-1 min-w-0 text-center">
+                  <h1 className="text-[15px] font-medium truncate max-w-full" style={{ color: theme.text.primary }}>
                     {activeAgentName || 'Agent'}
                   </h1>
-                  <p className="text-xs truncate" style={{ color: theme.text.tertiary }}>
+                  <p className="text-xs truncate max-w-full" style={{ color: theme.text.tertiary }}>
                     {activeAgentRepo || (launchRepo ? `${launchRepo.owner}/${launchRepo.name}` : 'repository')}
                   </p>
                 </div>
               )}
               
               {/* Right side */}
-              <div className={isInChatView ? 'flex-1 flex justify-end' : ''}>
+              <div className="flex-shrink-0">
                 <UserAvatarDropdown
                   userEmail={userInfo?.userEmail}
                   onLogout={handleLogout}
