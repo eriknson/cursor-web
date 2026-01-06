@@ -3,23 +3,32 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError, NotFoundError } from '@/lib/cursorClient';
-import { AgentStep } from '@/lib/cursorSdk';
 import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
 import { useTypewriter } from '@/components/TypewriterText';
 import { theme } from '@/lib/theme';
 
 // Cursor cube avatar for agent messages
-function CursorAvatar({ size = 18 }: { size?: number }) {
+function CursorAvatar({ size = 24 }: { size?: number }) {
+  const iconSize = Math.round(size * 0.55);
   return (
-    <img 
-      src="/cursor-cube.svg" 
-      alt="" 
-      width={size} 
-      height={size}
-      className="flex-shrink-0 opacity-60"
-      style={{ marginTop: 2 }}
-    />
+    <div 
+      className="flex-shrink-0 rounded-full flex items-center justify-center"
+      style={{ 
+        width: size, 
+        height: size, 
+        marginTop: 6, // Align avatar center with first line of text
+        background: 'rgba(255, 255, 255, 0.08)',
+      }}
+    >
+      <img 
+        src="/cursor-cube.svg" 
+        alt="" 
+        width={iconSize} 
+        height={iconSize}
+        style={{ opacity: 0.85 }}
+      />
+    </div>
   );
 }
 
@@ -114,8 +123,6 @@ interface ConversationViewProps {
   onStatusChange?: (status: string) => void;
   onAgentUpdate?: (agentId: string, updates: { status?: string; name?: string }) => void;
   onAuthFailure?: () => void;
-  isSdkMode?: boolean;
-  sdkSteps?: AgentStep[];
   preloadedData?: { agent: Agent; messages: Message[] };
   // Previous conversation turns from continuation agents
   previousTurns?: ConversationTurn[];
@@ -123,6 +130,10 @@ interface ConversationViewProps {
   refreshTrigger?: number;
   // Initial status hint - used to show appropriate loading UI for past agents
   initialStatus?: string;
+  // Pending follow-up message that should appear immediately (optimistic UI)
+  pendingFollowUp?: string;
+  // Callback when pending follow-up has been confirmed in the conversation
+  onFollowUpConfirmed?: () => void;
 }
 
 const INITIAL_POLL_INTERVAL = 1000;
@@ -212,174 +223,6 @@ function AgentResponseText({
   );
 }
 
-// Merge consecutive text deltas into single blocks
-function mergeTextSteps(steps: AgentStep[]): AgentStep[] {
-  const merged: AgentStep[] = [];
-  let currentText = '';
-  let currentThinking = '';
-
-  for (const step of steps) {
-    if (step.type === 'text' && step.content) {
-      currentText += step.content;
-    } else if (step.type === 'thinking' && step.content) {
-      currentThinking += step.content;
-    } else {
-      if (currentText) {
-        merged.push({ type: 'text', content: currentText, timestamp: step.timestamp });
-        currentText = '';
-      }
-      if (currentThinking) {
-        merged.push({ type: 'thinking', content: currentThinking, timestamp: step.timestamp });
-        currentThinking = '';
-      }
-      if (step.type !== 'step_complete' && step.type !== 'done' && step.content) {
-        merged.push(step);
-      }
-    }
-  }
-
-  if (currentText) {
-    merged.push({ type: 'text', content: currentText, timestamp: new Date() });
-  }
-  if (currentThinking) {
-    merged.push({ type: 'thinking', content: currentThinking, timestamp: new Date() });
-  }
-
-  return merged;
-}
-
-// Individual Step Item
-function StepItem({ step, isLatest = false }: { step: AgentStep; isLatest?: boolean }) {
-  switch (step.type) {
-    case 'text':
-      return (
-        <div className="flex items-start gap-2.5">
-          <CursorAvatar />
-          <div 
-            className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
-            style={{ color: theme.text.primary }}
-          >
-            <AgentResponseText 
-              text={step.content} 
-              isActive={isLatest}
-              skipAnimation={!isLatest}
-            />
-          </div>
-        </div>
-      );
-
-    case 'thinking':
-      return (
-        <div 
-          className="leading-relaxed italic text-xs border-l-2 pl-3"
-          style={{ color: theme.text.tertiary, borderColor: theme.border.secondary }}
-        >
-          {step.content}
-        </div>
-      );
-
-    case 'tool_start':
-      return (
-        <div className="flex items-start gap-2 font-mono text-xs py-1">
-          <span className="text-amber-500 mt-0.5">▶</span>
-          <span style={{ color: theme.text.secondary }}>{step.content}</span>
-        </div>
-      );
-
-    case 'tool_complete':
-      return (
-        <div className="flex items-start gap-2 font-mono text-xs py-0.5">
-          <span className="text-green-500 mt-0.5">✓</span>
-          <span style={{ color: theme.text.tertiary }}>{step.content}</span>
-        </div>
-      );
-
-    case 'tool_output':
-      return (
-        <div 
-          className="font-mono text-xs rounded px-2 py-1 overflow-x-auto max-h-32 overflow-y-auto"
-          style={{ 
-            color: theme.text.tertiary,
-            background: theme.bg.card,
-          }}
-        >
-          <pre className="whitespace-pre-wrap">{step.content}</pre>
-        </div>
-      );
-
-    case 'user_message':
-      return (
-        <div 
-          className="text-[16px] md:text-[15px] leading-relaxed"
-          style={{ color: theme.text.tertiary }}
-        >
-          {step.content}
-        </div>
-      );
-
-    case 'error':
-      return (
-        <div className="flex items-start gap-2 text-red-400 text-xs py-1">
-          <span>✗</span>
-          <span>{step.content}</span>
-        </div>
-      );
-
-    default:
-      return null;
-  }
-}
-
-// SDK Steps View Component
-function SdkStepsView({ 
-  steps, 
-  scrollRef 
-}: { 
-  steps: AgentStep[]; 
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const mergedSteps = mergeTextSteps(steps);
-  const isActive = steps.length > 0 && steps[steps.length - 1]?.type !== 'done';
-  
-  // Get last meaningful step for status (SDK provides real-time updates)
-  const lastStep = steps[steps.length - 1];
-  const statusMessage = lastStep?.type === 'tool_start' 
-    ? lastStep.content 
-    : 'Working';
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [steps.length, scrollRef]);
-
-  if (steps.length === 0) {
-    return (
-      <div className="flex items-start gap-2.5">
-        <CursorAvatar />
-        <ShimmerText className="text-[13px] md:text-[12px]">
-          Starting
-        </ShimmerText>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-0.5">
-      {mergedSteps.map((step, idx) => (
-        <StepItem key={idx} step={step} isLatest={idx === mergedSteps.length - 1 && step.type === 'text'} />
-      ))}
-      
-      {isActive && (
-        <div className="flex items-start gap-2.5 pt-2">
-          <CursorAvatar />
-          <ShimmerText className="text-[13px] md:text-[12px]">
-            {statusMessage}
-          </ShimmerText>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Cloud Agent View
 function CloudAgentView({
   agent,
@@ -388,6 +231,8 @@ function CloudAgentView({
   scrollRef,
   isPending,
   initialPrompt,
+  pendingFollowUp,
+  summaryStale,
 }: {
   agent: Agent | null;
   messages: Message[];
@@ -395,18 +240,45 @@ function CloudAgentView({
   scrollRef: React.RefObject<HTMLDivElement | null>;
   isPending?: boolean;
   initialPrompt: string;
+  pendingFollowUp?: string;
+  summaryStale?: boolean;
 }) {
-  // Skip the first user message if it matches our initial prompt (already shown above)
+  // Skip user messages that are either:
+  // 1. The first message matching our initial prompt (already shown above)
+  // 2. Messages that match the agent's auto-generated name/title (not user-written)
   const displayMessages = messages.filter((msg, idx) => {
-    if (idx === 0 && msg.type === 'user_message' && msg.text === initialPrompt) {
-      return false;
+    if (msg.type === 'user_message') {
+      // Skip if it matches the initial prompt (already displayed above)
+      if (msg.text === initialPrompt) {
+        return false;
+      }
+      // Skip if it matches the agent's auto-generated title/name
+      if (agent?.name && msg.text === agent.name) {
+        return false;
+      }
     }
     return true;
   });
   
-  const agentMessages = displayMessages.filter(m => m.type === 'assistant_message');
-  const lastMessage = displayMessages[displayMessages.length - 1];
-  const isWaitingForResponse = isActive && lastMessage?.type === 'user_message';
+  // Check if pending follow-up is already in the messages (to avoid duplicate display)
+  const pendingAlreadyInMessages = pendingFollowUp && displayMessages.some(
+    msg => msg.type === 'user_message' && msg.text === pendingFollowUp
+  );
+  
+  // If we have a pending follow-up that's not yet in messages, add it for display
+  const messagesWithPending = pendingFollowUp && !pendingAlreadyInMessages
+    ? [...displayMessages, { 
+        id: 'pending-followup', 
+        type: 'user_message' as const, 
+        text: pendingFollowUp,
+        isPending: true 
+      }]
+    : displayMessages;
+  
+  const agentMessages = messagesWithPending.filter(m => m.type === 'assistant_message');
+  const lastMessage = messagesWithPending[messagesWithPending.length - 1];
+  // Waiting for response if we have a pending follow-up or if last message is user message
+  const isWaitingForResponse = isActive && (lastMessage?.type === 'user_message' || !!pendingFollowUp);
   
   // Get initial loading phase message (before any real messages arrive)
   const hasAnyAgentContent = agentMessages.length > 0 || !!agent?.name;
@@ -436,23 +308,23 @@ function CloudAgentView({
   return (
     <div>
       {/* Conversation thread - shows both user follow-ups and agent responses */}
-      {displayMessages.map((msg, idx) => {
+      {messagesWithPending.map((msg, idx) => {
         const isLatestAgent = msg.type === 'assistant_message' && 
-          displayMessages.filter(m => m.type === 'assistant_message').pop()?.id === msg.id;
+          messagesWithPending.filter(m => m.type === 'assistant_message').pop()?.id === msg.id;
         const isActiveMessage = isLatestAgent && isActive && !isWaitingForResponse;
-        const prevMsg = displayMessages[idx - 1];
-        const isAfterUser = prevMsg?.type === 'user_message';
+        // Consistent spacing between all message bubbles
+        const spacingClass = 'pt-3';
 
         if (msg.type === 'user_message') {
           // User follow-up message - bubble style
           return (
-            <div key={msg.id} className="flex justify-end pt-4">
+            <div key={msg.id} className={`flex justify-end ${spacingClass}`}>
               <div 
                 className="max-w-[85%] px-4 py-2.5 rounded-2xl"
                 style={{ background: theme.bg.tertiary }}
               >
                 <p 
-                  className="text-[14px] md:text-[13px] leading-relaxed"
+                  className="text-[14px] leading-relaxed"
                   style={{ color: theme.text.primary }}
                 >
                   {msg.text}
@@ -463,57 +335,95 @@ function CloudAgentView({
         }
 
         // Agent message - flows together with comfortable spacing, monospace font with typewriter
+        // Only show avatar on first message in a sequence of agent messages
+        const prevMsg = messagesWithPending[idx - 1];
+        const isFirstInSequence = prevMsg?.type !== 'assistant_message';
+        
         return (
           <div 
             key={msg.id} 
-            className={`flex items-start gap-2.5 ${isAfterUser ? 'pt-3' : 'pt-1'}`}
+            className={`flex items-start gap-2.5 ${spacingClass}`}
           >
-            <CursorAvatar />
+            {isFirstInSequence ? (
+              <CursorAvatar />
+            ) : (
+              // Spacer to maintain alignment when avatar is hidden
+              <div className="w-6 flex-shrink-0" />
+            )}
             <div 
-              className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap transition-colors max-w-[70%]"
-              style={{ 
-                color: isActiveMessage ? theme.text.primary : theme.text.secondary 
-              }}
+              className="max-w-[70%] px-3 py-2 rounded-2xl"
+              style={{ background: theme.bg.quaternary }}
             >
-              <AgentResponseText 
-                text={msg.text} 
-                isActive={isActiveMessage}
-                skipAnimation={!isActiveMessage}
-              />
+              <div 
+                className="text-[13px] leading-[1.7] whitespace-pre-wrap transition-colors"
+                style={{ 
+                  color: isActiveMessage ? theme.text.primary : theme.text.secondary 
+                }}
+              >
+                <AgentResponseText 
+                  text={msg.text} 
+                  isActive={isActiveMessage}
+                  skipAnimation={!isActiveMessage}
+                />
+              </div>
             </div>
           </div>
         );
       })}
 
       {/* Status indicator - shows REAL agent status/name */}
+      {/* Hide avatar if continuing after agent messages */}
       {showThinking && (
-        <div className="flex items-start gap-2.5 pt-1">
-          <CursorAvatar />
-          <ShimmerText className="text-[13px] md:text-[12px]">
-            {statusMessage}
-          </ShimmerText>
+        <div className="flex items-start gap-2.5 pt-3">
+          {agentMessages.length === 0 ? (
+            <CursorAvatar />
+          ) : (
+            <div className="w-6 flex-shrink-0" />
+          )}
+          <div 
+            className="max-w-[70%] px-3 py-2 rounded-2xl"
+            style={{ background: theme.bg.quaternary }}
+          >
+            <ShimmerText className="text-[13px]">
+              {statusMessage}
+            </ShimmerText>
+          </div>
         </div>
       )}
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <div className="flex items-start gap-2.5 pt-2">
-          <CursorAvatar />
-          <ShimmerText className="text-[13px] md:text-[12px]">
-            {statusMessage}
-          </ShimmerText>
+        <div className="flex items-start gap-2.5 pt-3">
+          <div className="w-6 flex-shrink-0" />
+          <div 
+            className="max-w-[70%] px-3 py-2 rounded-2xl"
+            style={{ background: theme.bg.quaternary }}
+          >
+            <ShimmerText className="text-[13px]">
+              {statusMessage}
+            </ShimmerText>
+          </div>
         </div>
       )}
 
-      {/* Summary - only show when finished */}
-      {agent?.summary && !isActive && (
-        <div className="flex items-start gap-2.5 pt-1">
-          <CursorAvatar />
+      {/* Summary - only show when finished and not stale */}
+      {agent?.summary && !isActive && !summaryStale && (
+        <div className="flex items-start gap-2.5 pt-3">
+          {agentMessages.length === 0 ? (
+            <CursorAvatar />
+          ) : (
+            <div className="w-6 flex-shrink-0" />
+          )}
           <div 
-            className="text-[13px] md:text-[12px] leading-[1.7] max-w-[70%]"
-            style={{ color: theme.text.primary }}
+            className="max-w-[70%] px-3 py-2 rounded-2xl"
+            style={{ background: theme.bg.quaternary }}
           >
-            {renderWithCodeTags(agent.summary)}
+            <div 
+              className="text-[13px] leading-[1.7]"
+              style={{ color: theme.text.primary }}
+            >
+              {renderWithCodeTags(agent.summary)}
+            </div>
           </div>
         </div>
       )}
@@ -554,7 +464,7 @@ function extractRepoName(repo: string): string {
   return parts[parts.length - 1] || repo;
 }
 
-// Commit confirmation component - subtle design with arrow pointing to status
+// Commit confirmation component - subtle design with GitHub merge icon
 function CommitConfirmation({ agent }: { agent: Agent }) {
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
@@ -566,12 +476,37 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
   const statusMessage = `Committed to ${repoName} ${timeAgo}`;
   
   // Use the best available URL (PR > commits > Cursor URL)
+  // Only show if we have a PR URL (definite commit) or a valid GitHub commits URL
   const linkUrl = agent.target.prUrl || githubCommitsUrl || agent.target.url;
   
+  // Only show commit confirmation if there's evidence of an actual commit
+  // PR URL is the strongest indicator, but we also check for valid GitHub commits URL
+  const hasCommitEvidence = !!agent.target.prUrl || !!githubCommitsUrl;
+  
+  if (!hasCommitEvidence) {
+    return null;
+  }
+  
   return (
-    <div className="pt-2 flex items-start gap-1.5">
-      {/* Small arrow pointing down-right */}
-      <span className="text-xs" style={{ color: theme.text.tertiary }}>↘</span>
+    <div className="pt-1 flex items-center gap-1.5 pl-[34px]">
+      {/* Checkmark icon - inherits text color */}
+      <svg 
+        width="12" 
+        height="12" 
+        viewBox="0 0 16 16" 
+        fill="none" 
+        xmlns="http://www.w3.org/2000/svg"
+        className="flex-shrink-0"
+        style={{ color: theme.text.tertiary }}
+      >
+        <path
+          d="M13.25 4.75 6.5 11.5 3 8"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
       
       {/* Status message - subtle and clickable */}
       {linkUrl ? (
@@ -606,12 +541,12 @@ export function ConversationView({
   onStatusChange,
   onAgentUpdate,
   onAuthFailure,
-  isSdkMode = false,
-  sdkSteps = [],
   preloadedData,
   previousTurns = [],
   refreshTrigger = 0,
   initialStatus,
+  pendingFollowUp,
+  onFollowUpConfirmed,
 }: ConversationViewProps) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -629,17 +564,54 @@ export function ConversationView({
   const rateLimitedRef = useRef(false);
   const conversationRateLimitedUntilRef = useRef(0); // Timestamp when to retry conversation
   
+  // Track when a restart happened so we can clear stale summaries
+  const lastRefreshTriggerRef = useRef(refreshTrigger);
+  const [summaryStale, setSummaryStale] = useState(false);
+  
   // Stable refs for callbacks to avoid polling instability when parent re-renders
   const onStatusChangeRef = useRef(onStatusChange);
   const onAgentUpdateRef = useRef(onAgentUpdate);
   const onAuthFailureRef = useRef(onAuthFailure);
+  const onFollowUpConfirmedRef = useRef(onFollowUpConfirmed);
   
   // Keep refs in sync with props
   useEffect(() => {
     onStatusChangeRef.current = onStatusChange;
     onAgentUpdateRef.current = onAgentUpdate;
     onAuthFailureRef.current = onAuthFailure;
-  }, [onStatusChange, onAgentUpdate, onAuthFailure]);
+    onFollowUpConfirmedRef.current = onFollowUpConfirmed;
+  }, [onStatusChange, onAgentUpdate, onAuthFailure, onFollowUpConfirmed]);
+  
+  // When refreshTrigger changes (follow-up to finished agent), mark summary as stale
+  useEffect(() => {
+    if (refreshTrigger > lastRefreshTriggerRef.current) {
+      setSummaryStale(true);
+      lastRefreshTriggerRef.current = refreshTrigger;
+    }
+  }, [refreshTrigger]);
+  
+  // Detect when pending follow-up appears in the actual messages and notify parent
+  useEffect(() => {
+    if (pendingFollowUp && messages.length > 0) {
+      // Check if a user message with matching text appeared
+      const hasMatchingMessage = messages.some(
+        msg => msg.type === 'user_message' && msg.text === pendingFollowUp
+      );
+      if (hasMatchingMessage) {
+        onFollowUpConfirmedRef.current?.();
+      }
+    }
+  }, [pendingFollowUp, messages]);
+  
+  // Clear stale summary flag when we get a fresh agent with updated summary
+  // We detect this when the summary changes after being marked stale
+  const prevSummaryRef = useRef(agent?.summary);
+  useEffect(() => {
+    if (summaryStale && agent?.summary && agent.summary !== prevSummaryRef.current) {
+      setSummaryStale(false);
+    }
+    prevSummaryRef.current = agent?.summary;
+  }, [agent?.summary, summaryStale]);
   
   // Handle "pending" state - when user just submitted but we don't have an agent ID yet
   const isPending = agentId === 'pending';
@@ -674,19 +646,21 @@ export function ConversationView({
   }, []);
 
   const fetchAll = useCallback(async (isInitial = false, forceConversation = false): Promise<boolean> => {
-    if (!agentId || !apiKey || agentId.startsWith('sdk-')) return false;
+    if (!agentId || !apiKey) return false;
     if (fetchInFlightRef.current) return false;
     
     fetchInFlightRef.current = true;
     const release = () => { fetchInFlightRef.current = false; };
     
     let gotData = false;
+    let agentStatusAfterFetch: string | undefined;
     
     // Always fetch agent status
     try {
       const status = await getAgentStatus(apiKey, agentId);
       setAgent(status);
       latestAgentRef.current = status;
+      agentStatusAfterFetch = status.status;
       setError(null);
       onStatusChangeRef.current?.(status.status);
       if (agentId) {
@@ -711,11 +685,16 @@ export function ConversationView({
       }
     }
 
-    // Only fetch conversation on initial load, forced, or every N polls
+    // Only fetch conversation on initial load, forced, every N polls, or when agent is terminal
+    // When agent is terminal, always fetch to ensure we get all final messages
     // Also respect rate limit backoff
     const isConversationRateLimited = Date.now() < conversationRateLimitedUntilRef.current;
+    const agentIsTerminal = agentStatusAfterFetch === 'FINISHED' || 
+                            agentStatusAfterFetch === 'ERROR' || 
+                            agentStatusAfterFetch === 'STOPPED' ||
+                            agentStatusAfterFetch === 'EXPIRED';
     const shouldFetchConversation = !isConversationRateLimited && (
-      isInitial || forceConversation || 
+      isInitial || forceConversation || agentIsTerminal ||
       (pollCountRef.current % CONVERSATION_POLL_FREQUENCY === 0)
     );
     
@@ -790,15 +769,30 @@ export function ConversationView({
       
       // Only stop polling if we successfully got a terminal status
       if (terminal) {
+        // When agent finishes, ensure we fetch conversation to get all final messages
+        // The conversation might not have been fetched in the last poll cycle
+        const previousMessageCount = messageIdsRef.current.size;
+        
         // Give server a moment to finalize, then fetch final state
         await new Promise(r => setTimeout(r, 500));
         await fetchAll(false, true);
+        
+        // Check if we got new messages - if so, wait a bit more and fetch again
+        const messageCountAfterFirstFetch = messageIdsRef.current.size;
+        const gotNewMessages = messageCountAfterFirstFetch > previousMessageCount;
+        
+        if (gotNewMessages) {
+          // If we got new messages, wait a bit more and fetch again to catch any remaining
+          await new Promise(r => setTimeout(r, 1000));
+          await fetchAll(false, true);
+        }
+        
         // Do one more fetch after a bit longer to catch any delayed updates like summary
         setTimeout(async () => {
           if (currentAgentIdRef.current === agentIdToCheck) {
             await fetchAll(false, true);
           }
-        }, 1500);
+        }, 2000);
         return;
       }
       
@@ -830,20 +824,13 @@ export function ConversationView({
       return;
     }
 
-    const isSdkAgent = agentId.startsWith('sdk-');
-
     if (currentAgentIdRef.current !== agentId) {
       currentAgentIdRef.current = agentId;
       setError(null);
       pollCountRef.current = 0;
       rateLimitedRef.current = false;
 
-      if (isSdkAgent) {
-        setAgent(null);
-        setMessages([]);
-        messageIdsRef.current = new Set();
-        setIsLoading(false);
-      } else if (preloadedData) {
+      if (preloadedData) {
         setAgent(preloadedData.agent);
         setMessages(preloadedData.messages);
         messageIdsRef.current = new Set(preloadedData.messages.map(m => m.id));
@@ -869,15 +856,51 @@ export function ConversationView({
     return stopPolling;
   }, [agentId, fetchAll, scheduleNextPoll, stopPolling, preloadedData]);
 
+  // Track whether we've completed post-terminal polling for summary
+  const postTerminalPollDoneRef = useRef(false);
+  
   useEffect(() => {
-    if (isTerminal) {
+    if (isTerminal && agentId && agentId !== 'pending') {
       stopPolling();
+      
+      // Skip if we've already done post-terminal polling for this agent
+      if (postTerminalPollDoneRef.current) {
+        return;
+      }
+      
+      // Poll a few more times to catch the summary which may not be immediately available
+      let attempts = 0;
+      const maxAttempts = 5;
+      const pollInterval = 2000;
+      
+      const pollForSummary = async () => {
+        attempts++;
+        await fetchAll(false, true).catch(() => {
+          // Silently ignore errors - we're just trying to get final state
+        });
+        
+        // Keep polling until we have a summary or hit max attempts
+        const currentAgent = latestAgentRef.current;
+        if (attempts < maxAttempts && !currentAgent?.summary && currentAgentIdRef.current === agentId) {
+          setTimeout(pollForSummary, pollInterval);
+        } else {
+          postTerminalPollDoneRef.current = true;
+        }
+      };
+      
+      // Start polling for summary immediately
+      pollForSummary();
     }
-  }, [isTerminal, stopPolling]);
+  }, [isTerminal, stopPolling, agentId, fetchAll]);
+  
+  // Reset post-terminal poll flag when agent changes
+  useEffect(() => {
+    postTerminalPollDoneRef.current = false;
+  }, [agentId]);
 
   // Restart polling when refreshTrigger changes (e.g., after follow-up to finished agent)
   useEffect(() => {
-    if (refreshTrigger > 0 && agentId && !agentId.startsWith('sdk-') && agentId !== 'pending') {
+    if (refreshTrigger > 0 && agentId && agentId !== 'pending') {
       // Reset rate limit state and restart polling
       pollCountRef.current = 0;
       rateLimitedRef.current = false;
@@ -927,108 +950,160 @@ export function ConversationView({
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Conversation content with consistent padding */}
-      <div className="pt-16 pb-44 space-y-3 px-4">
+      <div className="pt-16 pb-44 px-4">
         {/* Previous conversation turns - show history from continuation chain */}
-        {previousTurns.map((turn, turnIdx) => (
-          <div key={`turn-${turnIdx}`} className="space-y-2">
-            {/* Previous user prompt - bubble style */}
-            <div className="flex justify-end">
-              <div 
-                className="max-w-[85%] px-4 py-2.5 rounded-2xl"
-                style={{ background: theme.bg.tertiary }}
-              >
-                <p 
-                  className="text-[14px] md:text-[13px] leading-relaxed"
-                  style={{ color: theme.text.primary }}
+        {previousTurns.map((turn, turnIdx) => {
+          const isFirstTurn = turnIdx === 0;
+          const prevTurn = previousTurns[turnIdx - 1];
+          const hasPrevTurnMessages = prevTurn?.messages?.some(m => m.type === 'assistant_message') || prevTurn?.summary;
+          
+          return (
+            <div key={`turn-${turnIdx}`}>
+              {/* Previous user prompt - bubble style */}
+              <div className={`flex justify-end ${isFirstTurn ? '' : 'pt-3'}`}>
+                <div 
+                  className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+                  style={{ background: theme.bg.tertiary }}
                 >
-                  {turn.prompt}
-                </p>
-              </div>
-            </div>
-            
-            {/* Previous agent messages */}
-            <div className="text-sm space-y-1">
-              {turn.messages.filter(m => m.type === 'assistant_message').map((msg) => (
-                <div key={msg.id} className="flex items-start gap-2.5 pt-1">
-                  <CursorAvatar />
-                  <div 
-                    className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
-                    style={{ color: theme.text.tertiary }}
+                  <p 
+                    className="text-[14px] leading-relaxed"
+                    style={{ color: theme.text.primary }}
                   >
-                    {renderWithCodeTags(msg.text)}
-                  </div>
+                    {turn.prompt}
+                  </p>
                 </div>
-              ))}
+              </div>
               
-              {/* Previous turn summary */}
-              {turn.summary && (
-                <div className="flex items-start gap-2.5 pt-1">
-                  <CursorAvatar />
-                  <div 
-                    className="text-[13px] md:text-[12px] leading-[1.7] max-w-[70%]"
-                    style={{ color: theme.text.tertiary }}
-                  >
-                    {renderWithCodeTags(turn.summary)}
+              {/* Previous agent messages */}
+              <div className="text-sm">
+                {turn.messages.filter(m => m.type === 'assistant_message').map((msg, msgIdx) => {
+                  return (
+                    <div key={msg.id} className="flex items-start gap-2.5 pt-3">
+                      <CursorAvatar />
+                      <div 
+                        className="max-w-[70%] px-3 py-2 rounded-2xl"
+                        style={{ background: theme.bg.quaternary }}
+                      >
+                        <div 
+                          className="text-[13px] leading-[1.7] whitespace-pre-wrap"
+                          style={{ color: theme.text.tertiary }}
+                        >
+                          {renderWithCodeTags(msg.text)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {/* Previous turn summary */}
+                {turn.summary && (
+                  <div className="flex items-start gap-2.5 pt-3">
+                    <CursorAvatar />
+                    <div 
+                      className="max-w-[70%] px-3 py-2 rounded-2xl"
+                      style={{ background: theme.bg.quaternary }}
+                    >
+                      <div 
+                        className="text-[13px] leading-[1.7]"
+                        style={{ color: theme.text.tertiary }}
+                      >
+                        {renderWithCodeTags(turn.summary)}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        
-        {/* Current user prompt - bubble style */}
-        <div className="flex justify-end">
-          <div 
-            className="max-w-[85%] px-4 py-2.5 rounded-2xl"
-            style={{ background: theme.bg.tertiary }}
-          >
-            <p 
-              className="text-[14px] md:text-[13px] leading-relaxed"
-              style={{ color: theme.text.primary }}
-            >
-              {prompt}
-            </p>
-          </div>
-        </div>
-
-        {/* Current agent response - left aligned */}
-        <div className="text-sm">
-          {isSdkMode ? (
-            <SdkStepsView steps={sdkSteps} scrollRef={scrollRef} />
-          ) : error ? (
-            <div className="flex items-start gap-2.5">
-              <CursorAvatar />
-              <div style={{ color: theme.text.tertiary }}>
-                {error}
+                )}
               </div>
             </div>
-          ) : isPending ? (
-            // Pending state - just show thinking while we wait for agent ID
-            <div className="flex items-start gap-2.5">
-              <CursorAvatar />
-              <ShimmerText className="text-[13px] md:text-[12px]">
-                Thinking
-              </ShimmerText>
-            </div>
-          ) : isLoading ? (
-            // Loading a running agent - show shimmer text
-            <div className="flex items-start gap-2.5">
-              <CursorAvatar />
-              <ShimmerText className="text-[13px] md:text-[12px]">
-                Thinking
-              </ShimmerText>
-            </div>
-          ) : (
-            <CloudAgentView
-              agent={agent}
-              messages={messages}
-              isActive={isActive}
-              scrollRef={scrollRef}
-              isPending={isPending}
-              initialPrompt={prompt}
-            />
-          )}
-        </div>
+          );
+        })}
+        
+        {/* Compute actual user prompt - if prop is just agent's auto-generated name, use first user message */}
+        {(() => {
+          // Check if prompt is the auto-generated agent name (not the real user input)
+          // This happens when opening an existing agent from the activity list
+          const isPromptJustAgentName = prompt && agent?.name && prompt === agent.name;
+          
+          // Find the first user message in the conversation (the real user prompt)
+          const firstUserMessage = messages.find(m => m.type === 'user_message');
+          
+          // Use the real user message if prompt is just the agent name
+          const actualUserPrompt = isPromptJustAgentName && firstUserMessage 
+            ? firstUserMessage.text 
+            : prompt;
+          
+          return (
+            <>
+              {/* Current user prompt - bubble style */}
+              <div className={`flex justify-end ${previousTurns.length > 0 ? 'pt-3' : ''}`}>
+                <div 
+                  className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+                  style={{ background: theme.bg.tertiary }}
+                >
+                  <p 
+                    className="text-[14px] leading-relaxed"
+                    style={{ color: theme.text.primary }}
+                  >
+                    {actualUserPrompt}
+                  </p>
+                </div>
+              </div>
+
+              {/* Current agent response - left aligned */}
+              <div className="text-sm pt-3">
+                {error ? (
+                  <div className="flex items-start gap-2.5">
+                    <CursorAvatar />
+                    <div 
+                      className="max-w-[70%] px-3 py-2 rounded-2xl"
+                      style={{ background: theme.bg.quaternary }}
+                    >
+                      <div style={{ color: theme.text.tertiary }}>
+                        {error}
+                      </div>
+                    </div>
+                  </div>
+                ) : isPending ? (
+                  // Pending state - just show thinking while we wait for agent ID
+                  <div className="flex items-start gap-2.5">
+                    <CursorAvatar />
+                    <div 
+                      className="max-w-[70%] px-3 py-2 rounded-2xl"
+                      style={{ background: theme.bg.quaternary }}
+                    >
+                      <ShimmerText className="text-[13px]">
+                        Thinking
+                      </ShimmerText>
+                    </div>
+                  </div>
+                ) : isLoading ? (
+                  // Loading a running agent - show shimmer text
+                  <div className="flex items-start gap-2.5">
+                    <CursorAvatar />
+                    <div 
+                      className="max-w-[70%] px-3 py-2 rounded-2xl"
+                      style={{ background: theme.bg.quaternary }}
+                    >
+                      <ShimmerText className="text-[13px]">
+                        Thinking
+                      </ShimmerText>
+                    </div>
+                  </div>
+                ) : (
+                  <CloudAgentView
+                    agent={agent}
+                    messages={messages}
+                    isActive={isActive}
+                    scrollRef={scrollRef}
+                    isPending={isPending}
+                    initialPrompt={actualUserPrompt}
+                    pendingFollowUp={pendingFollowUp}
+                    summaryStale={summaryStale}
+                  />
+                )}
+              </div>
+            </>
+          );
+        })()}
         
         {/* Bottom anchor element for reliable scrolling */}
         <div ref={bottomAnchorRef} className="h-0" aria-hidden="true" />

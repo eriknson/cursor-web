@@ -123,10 +123,10 @@ export function RepoPicker({
         <div 
           className="absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto scrollbar-hidden rounded-lg shadow-2xl z-50"
           style={{
-            background: 'rgba(27, 26, 21, 0.55)',
-            backdropFilter: 'blur(20px) saturate(1.2)',
-            WebkitBackdropFilter: 'blur(20px) saturate(1.2)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            background: 'rgba(27, 26, 21, 0.35)',
+            backdropFilter: 'blur(24px) saturate(1.3)',
+            WebkitBackdropFilter: 'blur(24px) saturate(1.3)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
           }}
         >
           {repos.length === 0 && !showAllOption ? (

@@ -47,10 +47,8 @@ function useIOSKeyboard(): number {
 // Default model to use
 const DEFAULT_MODEL = 'composer-1';
 
-export type AgentMode = 'cloud' | 'sdk';
-
 interface ComposerProps {
-  onSubmit: (prompt: string, mode: AgentMode, model: string) => void;
+  onSubmit: (prompt: string, model: string) => void;
   isLoading: boolean;
   disabled: boolean;
   placeholder?: string;
@@ -126,7 +124,7 @@ export function Composer({
     }
     lastSubmitRef.current = now;
     
-    onSubmit(value.trim(), 'cloud', DEFAULT_MODEL);
+    onSubmit(value.trim(), DEFAULT_MODEL);
     setValue('');
     
     // Blur the textarea to dismiss keyboard and trigger viewport fix

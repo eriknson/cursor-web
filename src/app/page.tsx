@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
-import { Composer, AgentMode } from '@/components/Composer';
+import { Composer } from '@/components/Composer';
 import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { UserAvatarDropdown } from '@/components/UserAvatarDropdown';
 import { CursorLoader } from '@/components/CursorLoader';
@@ -25,7 +25,6 @@ import {
   Agent,
   Message,
 } from '@/lib/cursorClient';
-import { streamSdkAgent, AgentStep } from '@/lib/cursorSdk';
 import {
   getApiKey,
   setApiKey,
@@ -110,9 +109,6 @@ export default function Home() {
   const [activeAgentRepo, setActiveAgentRepo] = useState<string | null>(null);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
 
-  // SDK streaming state - keyed by run ID
-  const [sdkStepsMap, setSdkStepsMap] = useState<Record<string, AgentStep[]>>({});
-
   // Preloaded agent data cache - keyed by agent ID
   const [agentCache, setAgentCache] = useState<Record<string, { agent: Agent; messages: Message[] }>>({});
   const agentPrefetchInFlightRef = useRef<Set<string>>(new Set());
@@ -125,6 +121,9 @@ export default function Home() {
 
   // Trigger to restart polling in ConversationView (for follow-ups to finished agents)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Pending follow-up message for optimistic UI
+  const [pendingFollowUp, setPendingFollowUp] = useState<string | null>(null);
 
   // Guard for concurrent run fetches
   const runsFetchInFlight = useRef(false);
@@ -516,7 +515,6 @@ export default function Home() {
   // Available when there's an active cloud agent (running or finished)
   const isConversationMode = Boolean(
     activeAgentId && 
-    !activeAgentId.startsWith('sdk-') && 
     activeAgentId !== 'pending'
   );
   
@@ -525,7 +523,7 @@ export default function Home() {
   const isAgentFinished = activeAgentStatus === 'FINISHED' || activeAgentStatus === 'STOPPED' || activeAgentStatus === 'ERROR' || activeAgentStatus === 'EXPIRED';
 
   // Handle launching agent or sending follow-up/continuation
-  const handleLaunch = async (prompt: string, mode: AgentMode, model: string) => {
+  const handleLaunch = async (prompt: string, model: string) => {
     if (!apiKey || isLaunching) return;
 
     // If in conversation mode, try follow-up first, then fall back to continuation
@@ -534,13 +532,19 @@ export default function Home() {
       
       // If agent is still running, send a follow-up
       if (isAgentRunning) {
+        // Show the message immediately (optimistic UI)
+        setPendingFollowUp(prompt);
+        
         try {
           await addFollowUp(apiKey, activeAgentId, {
             prompt: { text: prompt },
           });
           // The ConversationView will pick up the new message via polling
+          // and call onFollowUpConfirmed to clear the pending state
         } catch (err) {
           console.error('Failed to send follow-up:', err);
+          // Clear the optimistic message on error
+          setPendingFollowUp(null);
           if (err instanceof AuthError) {
             handleAuthFailure();
           } else {
@@ -553,6 +557,9 @@ export default function Home() {
       }
       
       // Agent is finished - try follow-up first, then fall back to launching continuation agent
+      // Show the message immediately (optimistic UI)
+      setPendingFollowUp(prompt);
+      
       try {
         await addFollowUp(apiKey, activeAgentId, {
           prompt: { text: prompt },
@@ -565,6 +572,8 @@ export default function Home() {
       } catch (err) {
         // Follow-up to finished agent failed - launch a continuation agent
         console.log('Follow-up to finished agent failed, launching continuation:', err);
+        // Clear the optimistic message since we're falling through to continuation
+        setPendingFollowUp(null);
         // Fall through to launch a new agent as continuation
       }
       
@@ -650,63 +659,8 @@ export default function Home() {
     setActiveAgentId('pending');
     setActiveAgentStatus('CREATING');
 
-    if (mode === 'sdk') {
-      // SDK mode - use @cursor-ai/january package
-      // Note: SDK runs are local-only and don't sync via Cursor API
-      const tempRunId = `sdk-${Date.now()}`;
-      try {
-        // Create a temporary Agent-like object for local display
-        const tempAgent: Agent = {
-          id: tempRunId,
-          name: prompt.length > 50 ? prompt.slice(0, 50) + '...' : prompt,
-          status: 'RUNNING',
-          source: { repository: launchRepo.repository, ref: 'main' },
-          target: { branchName: '', url: '', autoCreatePr: false },
-          createdAt: new Date().toISOString(),
-        };
-        setRuns(prev => [tempAgent, ...prev]);
-        setActiveAgentId(tempRunId);
-        setSdkStepsMap((prev) => ({ ...prev, [tempRunId]: [] }));
-
-        // Stream the response from the SDK via our API route
-        for await (const step of streamSdkAgent({
-          apiKey,
-          model,
-          repository: launchRepo.repository,
-        }, prompt)) {
-          setSdkStepsMap((prev) => ({
-            ...prev,
-            [tempRunId]: [...(prev[tempRunId] || []), step],
-          }));
-        }
-
-        // Mark as finished
-        setRuns((prev) =>
-          prev.map((r) => (r.id === tempRunId ? { ...r, status: 'FINISHED' } : r))
-        );
-      } catch (err) {
-        console.error('SDK agent failed:', err);
-        if (err instanceof AuthError) {
-          handleAuthFailure();
-        } else {
-          toast.error(err instanceof Error ? err.message : 'SDK agent failed');
-        }
-        // Clean up temporary run on failure
-        setRuns((prev) => prev.filter((r) => r.id !== tempRunId));
-        setSdkStepsMap((prev) => {
-          const next = { ...prev };
-          delete next[tempRunId];
-          return next;
-        });
-        // Reset to null on error so user can try again
-        setActiveAgentId(null);
-        setActivePrompt('');
-      } finally {
-        setIsLaunching(false);
-      }
-    } else {
-      // Cloud mode - use REST API
-      try {
+    // Cloud mode - use REST API
+    try {
         const agent = await launchAgent(apiKey, {
           prompt: { text: prompt },
           source: { repository: launchRepo.repository },
@@ -728,9 +682,8 @@ export default function Home() {
         // Reset to null on error so user can try again
         setActiveAgentId(null);
         setActivePrompt('');
-      } finally {
-        setIsLaunching(false);
-      }
+    } finally {
+      setIsLaunching(false);
     }
   };
 
@@ -744,9 +697,10 @@ export default function Home() {
     // Extract full repo display name (owner/repo format)
     const repoDisplay = getRepoDisplayFromAgent(agent);
     setActiveAgentRepo(repoDisplay);
-    // Clear conversation history when switching to a different run
+    // Clear conversation history and pending state when switching to a different run
     setConversationTurns([]);
     setRefreshTrigger(0);
+    setPendingFollowUp(null);
   };
 
   // Handle going back to home from conversation
@@ -758,6 +712,7 @@ export default function Home() {
     setActiveAgentName(null);
     setConversationTurns([]);
     setRefreshTrigger(0);
+    setPendingFollowUp(null);
   };
 
   // Handle agent data change from conversation view (status, name, etc.)
@@ -788,6 +743,11 @@ export default function Home() {
   // Legacy handler for backwards compatibility - memoized to prevent polling instability
   const handleStatusChange = useCallback((status: string) => {
     setActiveAgentStatus(status);
+  }, []);
+
+  // Callback when pending follow-up has been confirmed in the conversation
+  const handleFollowUpConfirmed = useCallback(() => {
+    setPendingFollowUp(null);
   }, []);
 
   // Show nothing while checking for stored API key to prevent flash
@@ -1010,20 +970,20 @@ export default function Home() {
         {isInChatView ? (
           <div className="flex-1 min-h-0 flex flex-col max-w-[700px] mx-auto w-full px-4">
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <ConversationView
-              agentId={activeAgentId}
-              apiKey={apiKey}
-              prompt={activePrompt}
-              onStatusChange={handleStatusChange}
-              onAgentUpdate={handleAgentUpdate}
-              onAuthFailure={handleAuthFailure}
-              isSdkMode={activeAgentId?.startsWith('sdk-') || false}
-              sdkSteps={activeAgentId ? sdkStepsMap[activeAgentId] || [] : []}
-              preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
-              previousTurns={conversationTurns}
-              refreshTrigger={refreshTrigger}
-              initialStatus={activeAgentStatus || undefined}
-            />
+                            <ConversationView
+                            agentId={activeAgentId}
+                            apiKey={apiKey}
+                            prompt={activePrompt}
+                            onStatusChange={handleStatusChange}
+                            onAgentUpdate={handleAgentUpdate}
+                            onAuthFailure={handleAuthFailure}
+                            preloadedData={activeAgentId ? agentCache[activeAgentId] : undefined}
+                            previousTurns={conversationTurns}
+                            refreshTrigger={refreshTrigger}
+                            initialStatus={activeAgentStatus || undefined}
+                            pendingFollowUp={pendingFollowUp || undefined}
+                            onFollowUpConfirmed={handleFollowUpConfirmed}
+                          />
             </div>
           </div>
         ) : (
