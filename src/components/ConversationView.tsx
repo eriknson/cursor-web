@@ -9,6 +9,20 @@ import { ShimmerText } from '@/components/ShimmerText';
 import { useTypewriter } from '@/components/TypewriterText';
 import { theme } from '@/lib/theme';
 
+// Cursor cube avatar for agent messages
+function CursorAvatar({ size = 18 }: { size?: number }) {
+  return (
+    <img 
+      src="/cursor-cube.svg" 
+      alt="" 
+      width={size} 
+      height={size}
+      className="flex-shrink-0 opacity-60"
+      style={{ marginTop: 2 }}
+    />
+  );
+}
+
 // Initial loading phases shown before first real message arrives
 const INITIAL_PHASES = [
   { message: 'Initializing agent', duration: 2000 },
@@ -239,15 +253,18 @@ function StepItem({ step, isLatest = false }: { step: AgentStep; isLatest?: bool
   switch (step.type) {
     case 'text':
       return (
-        <div 
-          className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
-          style={{ color: theme.text.primary }}
-        >
-          <AgentResponseText 
-            text={step.content} 
-            isActive={isLatest}
-            skipAnimation={!isLatest}
-          />
+        <div className="flex items-start gap-2.5">
+          <CursorAvatar />
+          <div 
+            className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
+            style={{ color: theme.text.primary }}
+          >
+            <AgentResponseText 
+              text={step.content} 
+              isActive={isLatest}
+              skipAnimation={!isLatest}
+            />
+          </div>
         </div>
       );
 
@@ -336,9 +353,12 @@ function SdkStepsView({
 
   if (steps.length === 0) {
     return (
-      <ShimmerText className="text-[13px] md:text-[12px]">
-        Starting
-      </ShimmerText>
+      <div className="flex items-start gap-2.5">
+        <CursorAvatar />
+        <ShimmerText className="text-[13px] md:text-[12px]">
+          Starting
+        </ShimmerText>
+      </div>
     );
   }
 
@@ -349,9 +369,12 @@ function SdkStepsView({
       ))}
       
       {isActive && (
-        <ShimmerText className="text-[13px] md:text-[12px] pt-2 block">
-          {statusMessage}
-        </ShimmerText>
+        <div className="flex items-start gap-2.5 pt-2">
+          <CursorAvatar />
+          <ShimmerText className="text-[13px] md:text-[12px]">
+            {statusMessage}
+          </ShimmerText>
+        </div>
       )}
     </div>
   );
@@ -443,43 +466,55 @@ function CloudAgentView({
         return (
           <div 
             key={msg.id} 
-            className={`relative text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap transition-colors max-w-[70%] ${
-              isAfterUser ? 'pt-3' : 'pt-1'
-            }`}
-            style={{ 
-              color: isActiveMessage ? theme.text.primary : theme.text.secondary 
-            }}
+            className={`flex items-start gap-2.5 ${isAfterUser ? 'pt-3' : 'pt-1'}`}
           >
-            <AgentResponseText 
-              text={msg.text} 
-              isActive={isActiveMessage}
-              skipAnimation={!isActiveMessage}
-            />
+            <CursorAvatar />
+            <div 
+              className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap transition-colors max-w-[70%]"
+              style={{ 
+                color: isActiveMessage ? theme.text.primary : theme.text.secondary 
+              }}
+            >
+              <AgentResponseText 
+                text={msg.text} 
+                isActive={isActiveMessage}
+                skipAnimation={!isActiveMessage}
+              />
+            </div>
           </div>
         );
       })}
 
       {/* Status indicator - shows REAL agent status/name */}
       {showThinking && (
-        <ShimmerText className="text-[13px] md:text-[12px] pt-1 block">
-          {statusMessage}
-        </ShimmerText>
+        <div className="flex items-start gap-2.5 pt-1">
+          <CursorAvatar />
+          <ShimmerText className="text-[13px] md:text-[12px]">
+            {statusMessage}
+          </ShimmerText>
+        </div>
       )}
       
       {/* Active indicator when we have messages but still working */}
       {needsShimmerIndicator && (
-        <ShimmerText className="text-[13px] md:text-[12px] pt-2 block">
-          {statusMessage}
-        </ShimmerText>
+        <div className="flex items-start gap-2.5 pt-2">
+          <CursorAvatar />
+          <ShimmerText className="text-[13px] md:text-[12px]">
+            {statusMessage}
+          </ShimmerText>
+        </div>
       )}
 
       {/* Summary - only show when finished */}
       {agent?.summary && !isActive && (
-        <div 
-          className="text-[13px] md:text-[12px] leading-[1.7] pt-1 max-w-[70%]"
-          style={{ color: theme.text.primary }}
-        >
-          {renderWithCodeTags(agent.summary)}
+        <div className="flex items-start gap-2.5 pt-1">
+          <CursorAvatar />
+          <div 
+            className="text-[13px] md:text-[12px] leading-[1.7] max-w-[70%]"
+            style={{ color: theme.text.primary }}
+          >
+            {renderWithCodeTags(agent.summary)}
+          </div>
         </div>
       )}
 
@@ -912,24 +947,29 @@ export function ConversationView({
             </div>
             
             {/* Previous agent messages */}
-            <div className="text-sm">
+            <div className="text-sm space-y-1">
               {turn.messages.filter(m => m.type === 'assistant_message').map((msg) => (
-                <div 
-                  key={msg.id} 
-                  className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap pt-1 max-w-[70%]"
-                  style={{ color: theme.text.tertiary }}
-                >
-                  {renderWithCodeTags(msg.text)}
+                <div key={msg.id} className="flex items-start gap-2.5 pt-1">
+                  <CursorAvatar />
+                  <div 
+                    className="text-[13px] md:text-[12px] leading-[1.7] whitespace-pre-wrap max-w-[70%]"
+                    style={{ color: theme.text.tertiary }}
+                  >
+                    {renderWithCodeTags(msg.text)}
+                  </div>
                 </div>
               ))}
               
               {/* Previous turn summary */}
               {turn.summary && (
-                <div 
-                  className="text-[13px] md:text-[12px] leading-[1.7] pt-1 max-w-[70%]"
-                  style={{ color: theme.text.tertiary }}
-                >
-                  {renderWithCodeTags(turn.summary)}
+                <div className="flex items-start gap-2.5 pt-1">
+                  <CursorAvatar />
+                  <div 
+                    className="text-[13px] md:text-[12px] leading-[1.7] max-w-[70%]"
+                    style={{ color: theme.text.tertiary }}
+                  >
+                    {renderWithCodeTags(turn.summary)}
+                  </div>
                 </div>
               )}
             </div>
@@ -956,19 +996,28 @@ export function ConversationView({
           {isSdkMode ? (
             <SdkStepsView steps={sdkSteps} scrollRef={scrollRef} />
           ) : error ? (
-            <div style={{ color: theme.text.tertiary }}>
-              {error}
+            <div className="flex items-start gap-2.5">
+              <CursorAvatar />
+              <div style={{ color: theme.text.tertiary }}>
+                {error}
+              </div>
             </div>
           ) : isPending ? (
             // Pending state - just show thinking while we wait for agent ID
-            <ShimmerText className="text-[13px] md:text-[12px]">
-              Thinking
-            </ShimmerText>
+            <div className="flex items-start gap-2.5">
+              <CursorAvatar />
+              <ShimmerText className="text-[13px] md:text-[12px]">
+                Thinking
+              </ShimmerText>
+            </div>
           ) : isLoading ? (
             // Loading a running agent - show shimmer text
-            <ShimmerText className="text-[13px] md:text-[12px]">
-              Thinking
-            </ShimmerText>
+            <div className="flex items-start gap-2.5">
+              <CursorAvatar />
+              <ShimmerText className="text-[13px] md:text-[12px]">
+                Thinking
+              </ShimmerText>
+            </div>
           ) : (
             <CloudAgentView
               agent={agent}
