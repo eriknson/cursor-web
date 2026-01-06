@@ -681,20 +681,32 @@ export function ConversationView({
   );
 
   // Best-practice scroll-to-bottom: anchor + scroll container + window fallback
-  const scrollToBottom = useCallback(() => {
+  // Optimized for mobile keyboard states
+  const scrollToBottom = useCallback((smooth = false) => {
     // 1) Prefer sentinel anchor (scrolls the nearest scrollable ancestor, including window)
-    bottomAnchorRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
+    if (bottomAnchorRef.current) {
+      bottomAnchorRef.current.scrollIntoView({ 
+        block: 'end', 
+        behavior: smooth ? 'smooth' : 'auto',
+        inline: 'nearest'
+      });
+    }
 
     // 2) Also force the known scroll container, in case the browser chooses a different ancestor
     if (scrollRef.current) {
       const el = scrollRef.current;
-      el.scrollTop = el.scrollHeight;
+      // Use requestAnimationFrame for smoother scrolling on mobile
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
     }
 
     // 3) Final fallback: if the page itself is scrolling, force the document scroller
     const scrollingEl = document.scrollingElement;
     if (scrollingEl) {
-      scrollingEl.scrollTop = scrollingEl.scrollHeight;
+      requestAnimationFrame(() => {
+        scrollingEl.scrollTop = scrollingEl.scrollHeight;
+      });
     }
   }, []);
 
@@ -988,7 +1000,7 @@ export function ConversationView({
     if (isLoadingPastAgent) return;
     // Only scroll once we either have messages or loading has completed.
     if (messages.length === 0 && isLoading) return;
-    scrollToBottom();
+    scrollToBottom(false); // Use instant scroll for initial load
   }, [agentId, isPending, isLoadingPastAgent, isLoading, messages.length, scrollToBottom]);
 
   // After-paint fallback for late layout changes (images/video/fonts)
@@ -996,9 +1008,26 @@ export function ConversationView({
     if (!agentId || isPending) return;
     if (isLoadingPastAgent) return;
     if (messages.length === 0 && isLoading) return;
-    const t = setTimeout(scrollToBottom, 0);
-    return () => clearTimeout(t);
+    // Use requestAnimationFrame for better mobile performance
+    const rafId = requestAnimationFrame(() => {
+      scrollToBottom(false);
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [agentId, isPending, isLoadingPastAgent, isLoading, messages.length, scrollToBottom]);
+
+  // Scroll to bottom when new messages arrive (smooth scroll for better UX)
+  useEffect(() => {
+    if (!agentId || isPending) return;
+    if (isLoadingPastAgent) return;
+    if (messages.length === 0) return;
+    
+    // Use a small delay to ensure DOM is updated, especially on mobile
+    const timer = setTimeout(() => {
+      scrollToBottom(true); // Smooth scroll for new messages
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, [messages.length, agentId, isPending, isLoadingPastAgent, scrollToBottom]);
 
   if (!agentId) {
     return null;
@@ -1017,7 +1046,11 @@ export function ConversationView({
       ref={scrollRef}
       data-scroll-container
       className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden flex flex-col"
-      style={{ WebkitOverflowScrolling: 'touch' }}
+      style={{ 
+        WebkitOverflowScrolling: 'touch',
+        // Ensure proper scrolling on mobile, especially when keyboard is open
+        overscrollBehavior: 'contain',
+      }}
     >
       {/* Conversation content with consistent padding */}
       <div className="pt-16 pb-20 px-2 sm:px-4">
@@ -1203,7 +1236,7 @@ export function ConversationView({
         })()}
         
         {/* Bottom anchor element for reliable scrolling */}
-        <div ref={bottomAnchorRef} className="h-0" aria-hidden="true" />
+        <div ref={bottomAnchorRef} data-bottom-anchor className="h-0" aria-hidden="true" />
       </div>
     </div>
   );

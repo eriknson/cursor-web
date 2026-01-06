@@ -149,6 +149,10 @@ html {
   /* Fix 100vh bug on mobile - use fill-available as fallback */
   height: 100%;
   height: -webkit-fill-available;
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
+  /* Improve touch scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
@@ -160,6 +164,12 @@ body {
   /* Fix 100vh bug on mobile */
   min-height: 100%;
   min-height: -webkit-fill-available;
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
+  /* Improve touch scrolling */
+  -webkit-overflow-scrolling: touch;
+  /* Prevent pull-to-refresh on mobile (can interfere with scrolling) */
+  overscroll-behavior-y: contain;
 }
 
 /* Smooth animations */
@@ -360,13 +370,28 @@ a:active {
 
 
 /* ========================================
-   iOS PWA Scroll & Viewport Optimizations
+   Mobile Scroll & Viewport Optimizations
    ======================================== */
 
-/* iOS PWA scroll improvements for conversation container */
+/* Mobile scroll improvements for all scroll containers */
 [data-scroll-container] {
-  /* Smooth momentum scrolling on iOS - enables natural bounce */
+  /* Smooth momentum scrolling on iOS/Android - enables natural bounce */
   -webkit-overflow-scrolling: touch;
+  /* Prevent scroll chaining on mobile */
+  overscroll-behavior: contain;
+  /* Improve scroll performance */
+  will-change: scroll-position;
+  /* Ensure proper scrolling when keyboard is open */
+  scroll-behavior: smooth;
+}
+
+/* Optimize scrolling performance on mobile */
+@media (max-width: 768px) {
+  [data-scroll-container] {
+    /* Use GPU acceleration for smoother scrolling */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
 }
 
 

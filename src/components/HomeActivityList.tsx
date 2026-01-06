@@ -368,7 +368,13 @@ export function HomeActivityList({
         key={selectedRepo?.repository || 'default'}
         data-scroll-container
         className="flex-1 overflow-y-auto scrollbar-hidden pt-4 pb-44" 
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{ 
+          WebkitOverflowScrolling: 'touch',
+          // Ensure proper scrolling on mobile, especially when keyboard is open
+          overscrollBehavior: 'contain',
+          // Improve scroll performance on mobile
+          willChange: 'scroll-position',
+        }}
       >
         {isLoading ? (
           <div className="flex items-center justify-center py-20">

@@ -10,6 +10,46 @@ import { CursorLoader } from '@/components/CursorLoader';
 import { HomeActivityList } from '@/components/HomeActivityList';
 import { RepoPicker } from '@/components/RepoPicker';
 import { theme } from '@/lib/theme';
+
+// Hook to detect mobile keyboard state for layout adjustments
+function useMobileKeyboardState() {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isOpen, setIsOpen] = useState(false);
+  
+  useEffect(() => {
+    // Detect mobile devices
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+      window.innerWidth < 768;
+    
+    if (!isMobile) return;
+    
+    const vv = window.visualViewport;
+    if (!vv) return;
+    
+    const handleViewportChange = () => {
+      const currentHeight = vv.height;
+      const windowHeight = window.innerHeight;
+      const heightDiff = windowHeight - currentHeight;
+      
+      // Keyboard is open if viewport shrunk significantly
+      if (heightDiff > 100) {
+        setKeyboardHeight(heightDiff);
+        setIsOpen(true);
+      } else {
+        setKeyboardHeight(0);
+        setIsOpen(false);
+      }
+    };
+    
+    vv.addEventListener('resize', handleViewportChange);
+    return () => {
+      vv.removeEventListener('resize', handleViewportChange);
+    };
+  }, []);
+  
+  return { keyboardHeight, isOpen };
+}
 import {
   validateApiKey,
   listRepositories,
@@ -126,6 +166,9 @@ export default function Home() {
 
   // Track whether composer has input (for hiding empty state)
   const [hasComposerInput, setHasComposerInput] = useState(false);
+
+  // Track mobile keyboard state for layout adjustments
+  const { keyboardHeight: mobileKeyboardHeight, isOpen: isMobileKeyboardOpen } = useMobileKeyboardState();
 
   // Trigger to restart polling in ConversationView (for follow-ups to finished agents)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -999,7 +1042,11 @@ export default function Home() {
           paddingTop: isInChatView 
             ? 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' 
             : 'calc(env(safe-area-inset-top, 0px) + 7rem)',
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)',
+          // Adjust bottom padding when keyboard is open on mobile
+          // Reduce padding since composer moves up with keyboard
+          paddingBottom: isMobileKeyboardOpen && mobileKeyboardHeight > 100
+            ? `calc(env(safe-area-inset-bottom, 0px) + ${Math.max(1.5, 5.5 - (mobileKeyboardHeight / 100))}rem)`
+            : 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)',
         }}
       >
         {isInChatView ? (
