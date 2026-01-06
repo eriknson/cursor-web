@@ -121,33 +121,33 @@ export function RepoPicker({
       {/* Dropdown */}
       {isOpen && (
         <div 
-          className="absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto scrollbar-hidden rounded-lg shadow-2xl z-50"
+          className="absolute top-full left-0 mt-1.5 w-64 max-h-72 overflow-y-auto scrollbar-hidden rounded-md shadow-2xl z-50"
           style={{
-            background: 'rgba(27, 26, 21, 0.35)',
-            backdropFilter: 'blur(24px) saturate(1.3)',
-            WebkitBackdropFilter: 'blur(24px) saturate(1.3)',
+            background: 'rgba(20, 18, 11, 0.75)',
+            backdropFilter: 'blur(20px) saturate(1.4)',
+            WebkitBackdropFilter: 'blur(20px) saturate(1.4)',
             border: '1px solid rgba(255, 255, 255, 0.06)',
           }}
         >
           {repos.length === 0 && !showAllOption ? (
-            <div className="px-4 py-3 text-sm" style={{ color: theme.text.tertiary }}>
+            <div className="px-3 py-2 text-[13px]" style={{ color: theme.text.tertiary }}>
               No repositories found
             </div>
           ) : (
-            <>
+            <div className="pb-1">
               {/* All Repositories option */}
               {showAllOption && (
                 <>
                   <button
                     onClick={() => handleSelect(ALL_REPOS_OPTION)}
-                    className="w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-[13px] transition-colors cursor-pointer flex items-center gap-2"
                     style={{
                       color: isAllSelected ? theme.text.primary : theme.text.secondary,
-                      background: isAllSelected ? theme.bg.secondary : 'transparent',
+                      background: isAllSelected ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
                     }}
                     onMouseEnter={(e) => {
                       if (!isAllSelected) {
-                        e.currentTarget.style.background = theme.bg.tertiary;
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
                         e.currentTarget.style.color = theme.text.primary;
                       }
                     }}
@@ -158,13 +158,13 @@ export function RepoPicker({
                       }
                     }}
                   >
-                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
                     </svg>
                     <span className="truncate">All Repositories</span>
                   </button>
                   {repos.length > 0 && (
-                    <div className="h-px mx-3" style={{ background: theme.border.secondary }} />
+                    <div className="h-px mx-2 my-1" style={{ background: 'rgba(255, 255, 255, 0.06)' }} />
                   )}
                 </>
               )}
@@ -175,14 +175,14 @@ export function RepoPicker({
                   <button
                     key={repo.repository}
                     onClick={() => handleSelect(repo)}
-                    className="w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 text-[13px] transition-colors cursor-pointer"
                     style={{
                       color: isSelected ? theme.text.primary : theme.text.secondary,
-                      background: isSelected ? theme.bg.secondary : 'transparent',
+                      background: isSelected ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
                     }}
                     onMouseEnter={(e) => {
                       if (!isSelected) {
-                        e.currentTarget.style.background = theme.bg.tertiary;
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
                         e.currentTarget.style.color = theme.text.primary;
                       }
                     }}
@@ -197,7 +197,7 @@ export function RepoPicker({
                       <span className="truncate">{repo.name}</span>
                       {relativeTime && (
                         <span 
-                          className="text-xs shrink-0" 
+                          className="text-[11px] shrink-0" 
                           style={{ color: theme.text.tertiary }}
                         >
                           {relativeTime}
@@ -205,7 +205,7 @@ export function RepoPicker({
                       )}
                     </div>
                     <span 
-                      className="text-xs truncate block mt-0.5"
+                      className="text-[11px] truncate block"
                       style={{ color: theme.text.tertiary }}
                     >
                       {repo.owner}
@@ -213,7 +213,7 @@ export function RepoPicker({
                   </button>
                 );
               })}
-            </>
+            </div>
           )}
         </div>
       )}

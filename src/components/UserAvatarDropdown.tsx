@@ -37,11 +37,21 @@ export function UserAvatarDropdown({ userEmail, userName, onLogout }: UserAvatar
   }, []);
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative flex items-center gap-3" ref={menuRef}>
+      {/* Email - hidden on small viewports */}
+      {userEmail && (
+        <span 
+          className="hidden min-[500px]:block text-sm truncate max-w-48"
+          style={{ color: theme.text.tertiary }}
+        >
+          {userEmail}
+        </span>
+      )}
+      
       {/* Avatar button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-all cursor-pointer"
+        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium transition-all cursor-pointer shrink-0"
         style={{ 
           background: theme.bg.tertiary,
           color: theme.text.secondary,

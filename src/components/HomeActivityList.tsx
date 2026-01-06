@@ -248,7 +248,7 @@ function DateGroup({
     <div className="mb-2">
       <h3 
         className="text-sm font-medium px-4 py-2 animate-fade-in" 
-        style={{ animationDelay: `${startIndex * 20}ms`, color: theme.text.tertiary }}
+        style={{ animationDelay: `${startIndex * 12}ms`, color: theme.text.tertiary }}
       >
         {title}
       </h3>
@@ -259,7 +259,7 @@ function DateGroup({
             agent={agent} 
             onSelect={() => onSelectAgent(agent)}
             onPrefetch={onPrefetchAgent ? () => onPrefetchAgent(agent) : undefined}
-            animationDelay={(startIndex + idx) * 20}
+            animationDelay={(startIndex + idx) * 12}
           />
         ))}
       </div>
