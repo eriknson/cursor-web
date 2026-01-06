@@ -7,6 +7,7 @@ import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
 import { useTypewriter } from '@/components/TypewriterText';
 import { theme } from '@/lib/theme';
+import { trackGitHubLinkClick } from '@/lib/analytics';
 
 // Cursor cube avatar for agent messages
 function CursorAvatar({ size = 24, noMargin = false }: { size?: number; noMargin?: boolean }) {
@@ -556,6 +557,7 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
           rel="noopener noreferrer"
           className="text-xs transition-colors hover:opacity-80"
           style={{ color: theme.text.tertiary }}
+          onClick={() => trackGitHubLinkClick(linkUrl)}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = theme.text.secondary;
           }}

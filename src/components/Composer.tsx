@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { CursorLoader } from './CursorLoader';
+import { trackComposerSubmit } from '@/lib/analytics';
 
 // Hook to handle iOS keyboard viewport issues
 // Returns keyboard height so parent can adjust layout
@@ -124,6 +125,7 @@ export function Composer({
     }
     lastSubmitRef.current = now;
     
+    trackComposerSubmit(false);
     onSubmit(value.trim(), DEFAULT_MODEL);
     setValue('');
     

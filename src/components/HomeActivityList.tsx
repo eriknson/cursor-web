@@ -355,7 +355,7 @@ export function HomeActivityList({
             placeholder="Search Agents"
             className="w-full h-11 px-4 rounded-xl text-[15px] focus:outline-none transition-colors"
             style={{
-              background: 'var(--color-theme-bg-card)',
+              background: theme.bg.card,
               border: '1px solid var(--color-theme-border-secondary)',
               color: 'var(--color-theme-fg)',
             }}

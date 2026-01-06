@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { CachedRepo } from '@/lib/storage';
 import { CursorLoader } from './CursorLoader';
 import { theme } from '@/lib/theme';
+import { trackRepoSelect, trackRepoPickerOpen } from '@/lib/analytics';
 
 // Special value for "All Repositories" option
 export const ALL_REPOS_OPTION: CachedRepo = {
@@ -76,6 +77,7 @@ export function RepoPicker({
   }, []);
 
   const handleSelect = (repo: CachedRepo) => {
+    trackRepoSelect(repo.repository);
     onSelectRepo(repo);
     setIsOpen(false);
   };
@@ -89,7 +91,10 @@ export function RepoPicker({
     <div className="relative" ref={dropdownRef}>
       {/* Trigger button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (!isOpen) trackRepoPickerOpen();
+          setIsOpen(!isOpen);
+        }}
         disabled={isLoading}
         className="flex items-center gap-2 px-1 py-1 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         style={{ color: theme.text.secondary }}

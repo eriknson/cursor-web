@@ -36,6 +36,14 @@ import {
   CachedRepo,
   isPersistentStorage,
 } from '@/lib/storage';
+import {
+  trackAgentLaunch,
+  trackAgentSelect,
+  trackAgentFollowUp,
+  trackBackToHome,
+  trackApiKeySubmit,
+  trackLogout,
+} from '@/lib/analytics';
 
 // Get repo display name from agent (owner/repo format, e.g., "anysphere/cursor")
 function getRepoDisplayFromAgent(agent: Agent): string {
@@ -471,6 +479,7 @@ export default function Home() {
 
     setIsValidating(true);
     setAuthError(null);
+    trackApiKeySubmit();
 
     try {
       const info = await validateApiKey(apiKeyInput.trim());
@@ -504,6 +513,7 @@ export default function Home() {
 
   // Handle logout
   const handleLogout = () => {
+    trackLogout();
     clearApiKey();
     setApiKeyState(null);
     setUserInfo(null);
@@ -534,6 +544,7 @@ export default function Home() {
       if (isAgentRunning) {
         // Show the message immediately (optimistic UI)
         setPendingFollowUp(prompt);
+        trackAgentFollowUp(activeAgentId);
         
         try {
           await addFollowUp(apiKey, activeAgentId, {
@@ -559,6 +570,7 @@ export default function Home() {
       // Agent is finished - try follow-up first, then fall back to launching continuation agent
       // Show the message immediately (optimistic UI)
       setPendingFollowUp(prompt);
+      trackAgentFollowUp(activeAgentId);
       
       try {
         await addFollowUp(apiKey, activeAgentId, {
@@ -621,6 +633,8 @@ export default function Home() {
           model,
         });
 
+        trackAgentLaunch(repoToUse.repository, model);
+
         // Optimistically add to local state - API is source of truth, will sync on next poll
         setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
@@ -668,6 +682,8 @@ export default function Home() {
           model,
         });
 
+        trackAgentLaunch(launchRepo.repository, model);
+
         // Optimistically add to local state - API is source of truth, will sync on next poll
         setRuns(prev => [agent, ...prev.filter((r) => r.id !== agent.id)]);
         setActiveAgentId(agent.id);
@@ -689,6 +705,7 @@ export default function Home() {
 
   // Handle selecting a previous run from activity list
   const handleSelectAgent = (agent: Agent) => {
+    trackAgentSelect(agent.id, agent.status);
     setActiveAgentId(agent.id);
     // Use agent name as prompt display (API doesn't return original prompt)
     setActivePrompt(agent.name || 'Agent task');
@@ -705,6 +722,7 @@ export default function Home() {
 
   // Handle going back to home from conversation
   const handleBackToHome = () => {
+    trackBackToHome();
     setActiveAgentId(null);
     setActivePrompt('');
     setActiveAgentStatus(null);
@@ -964,7 +982,7 @@ export default function Home() {
                   onChange={(e) => setRunsSearchQuery(e.target.value)}
                   className="w-full h-11 px-4 rounded-xl text-[15px] focus:outline-none transition-colors"
                   style={{
-                    background: '#1f1f1f',
+                    background: theme.bg.card,
                     color: theme.text.primary,
                   }}
                 />
