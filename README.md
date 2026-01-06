@@ -13,18 +13,6 @@ A web interface for launching and managing Cursor Cloud Agents.
 
 Why don't penguins like talking to strangers at parties? Because they break the ice!
 
-## Winter Poem ❄️
-
-The snow falls gently from the sky,
-A blanket white, soft and high.
-The trees stand bare against the cold,
-Their branches silver, stories told.
-
-The world grows quiet, still and bright,
-As winter wraps us in its light.
-A time for warmth, for rest, for cheer,
-Until the springtime draws near.
-
 ## Setup
 
 1. Install dependencies:
