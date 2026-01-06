@@ -7,6 +7,20 @@ export const metadata: Metadata = {
   title: 'Cursor Cloud Agents',
   description: 'Web interface for Cursor Cloud Agents - build, fix bugs, explore',
   manifest: '/manifest.json',
+  // Open Graph metadata for Facebook, LinkedIn, iMessage, Slack, Discord, etc.
+  openGraph: {
+    title: 'Cursor Cloud Agents',
+    description: 'Web interface for Cursor Cloud Agents - build, fix bugs, explore',
+    siteName: 'Cursor',
+    locale: 'en_US',
+    type: 'website',
+  },
+  // Twitter card metadata
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Cursor Cloud Agents',
+    description: 'Web interface for Cursor Cloud Agents - build, fix bugs, explore',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
