@@ -1017,7 +1017,11 @@ export function ConversationView({
       ref={scrollRef}
       data-scroll-container
       className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden flex flex-col"
-      style={{ WebkitOverflowScrolling: 'touch' }}
+      style={{ 
+        WebkitOverflowScrolling: 'touch',
+        // Prevent layout shifts when keyboard opens
+        overscrollBehavior: 'contain',
+      }}
     >
       {/* Conversation content with consistent padding */}
       <div className="pt-16 pb-20 px-2 sm:px-4">
@@ -1203,7 +1207,12 @@ export function ConversationView({
         })()}
         
         {/* Bottom anchor element for reliable scrolling */}
-        <div ref={bottomAnchorRef} className="h-0" aria-hidden="true" />
+        <div 
+          ref={bottomAnchorRef} 
+          data-bottom-anchor
+          className="h-0" 
+          aria-hidden="true" 
+        />
       </div>
     </div>
   );

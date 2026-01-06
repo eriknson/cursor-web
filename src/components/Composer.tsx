@@ -4,45 +4,110 @@ import { useState, useRef, useEffect } from 'react';
 import { CursorLoader } from './CursorLoader';
 import { trackComposerSubmit } from '@/lib/analytics';
 
-// Hook to handle iOS keyboard viewport issues
+// Hook to handle mobile keyboard viewport issues across all devices
 // Returns keyboard height so parent can adjust layout
-function useIOSKeyboard(): number {
+function useMobileKeyboard(): { keyboardHeight: number; isKeyboardVisible: boolean } {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const initialViewportHeight = useRef(0);
+  const lastHeightRef = useRef(0);
   
   useEffect(() => {
-    // Check if we're on iOS/mobile Safari
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Detect mobile devices (iOS, Android, etc.)
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+      window.innerWidth <= 768;
     
-    if (!isIOS) return;
+    if (!isMobile) {
+      return;
+    }
     
     const vv = window.visualViewport;
-    if (!vv) return;
+    if (!vv) {
+      // Fallback for browsers without visualViewport API
+      const handleResize = () => {
+        const currentHeight = window.innerHeight;
+        if (initialViewportHeight.current === 0) {
+          initialViewportHeight.current = currentHeight;
+        }
+        
+        const heightDiff = initialViewportHeight.current - currentHeight;
+        if (heightDiff > 150) {
+          setKeyboardHeight(heightDiff);
+          setIsKeyboardVisible(true);
+        } else {
+          setKeyboardHeight(0);
+          setIsKeyboardVisible(false);
+          // Reset initial height if keyboard is fully closed
+          if (heightDiff < 50) {
+            initialViewportHeight.current = currentHeight;
+          }
+        }
+      };
+      
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
     
     // Store initial viewport height (full screen without keyboard)
     initialViewportHeight.current = window.innerHeight;
+    lastHeightRef.current = vv.height;
     
     const handleViewportChange = () => {
-      // Calculate keyboard height from difference between layout and visual viewport
-      const currentKeyboardHeight = window.innerHeight - vv.height;
+      const currentVisualHeight = vv.height;
+      const currentWindowHeight = window.innerHeight;
       
-      // Only set if keyboard is actually visible (threshold to avoid false positives)
-      if (currentKeyboardHeight > 100) {
-        setKeyboardHeight(currentKeyboardHeight);
+      // Calculate keyboard height from difference between window and visual viewport
+      const heightDiff = currentWindowHeight - currentVisualHeight;
+      
+      // Detect keyboard visibility with threshold to avoid false positives
+      // Use a threshold of 150px to account for browser chrome and small viewport changes
+      if (heightDiff > 150) {
+        setKeyboardHeight(heightDiff);
+        setIsKeyboardVisible(true);
+        lastHeightRef.current = currentVisualHeight;
       } else {
-        setKeyboardHeight(0);
+        // Only hide keyboard if we're close to the original height
+        // This prevents flickering during transitions
+        const heightChange = Math.abs(currentVisualHeight - lastHeightRef.current);
+        if (heightChange > 50 || heightDiff < 50) {
+          setKeyboardHeight(0);
+          setIsKeyboardVisible(false);
+          // Reset initial height when keyboard is fully closed
+          if (heightDiff < 50) {
+            initialViewportHeight.current = currentWindowHeight;
+          }
+        }
       }
     };
     
+    // Also handle focus/blur events for more reliable detection
+    const handleFocus = () => {
+      // Small delay to let viewport settle
+      setTimeout(() => {
+        handleViewportChange();
+      }, 100);
+    };
+    
+    const handleBlur = () => {
+      // Delay to allow keyboard to close
+      setTimeout(() => {
+        handleViewportChange();
+      }, 300);
+    };
+    
     vv.addEventListener('resize', handleViewportChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
     
     return () => {
       vv.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
   
-  return keyboardHeight;
+  return { keyboardHeight, isKeyboardVisible };
 }
 
 // Default model to use
@@ -69,21 +134,31 @@ export function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastSubmitRef = useRef<number>(0);
 
-  // Get iOS keyboard height to adjust composer position
-  const keyboardHeight = useIOSKeyboard();
+  // Get mobile keyboard height to adjust composer position
+  const { keyboardHeight, isKeyboardVisible } = useMobileKeyboard();
 
   // Scroll conversation to bottom when keyboard opens
   useEffect(() => {
-    if (keyboardHeight > 0) {
-      const scrollContainer = document.querySelector('[data-scroll-container]');
-      if (scrollContainer) {
-        scrollContainer.scrollTo({
-          top: scrollContainer.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
+    if (isKeyboardVisible && keyboardHeight > 0) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        const scrollContainer = document.querySelector('[data-scroll-container]');
+        if (scrollContainer) {
+          // Scroll to bottom with smooth behavior
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior: 'smooth'
+          });
+          
+          // Also ensure the bottom anchor is visible
+          const bottomAnchor = scrollContainer.querySelector('[data-bottom-anchor]');
+          if (bottomAnchor) {
+            bottomAnchor.scrollIntoView({ block: 'end', behavior: 'smooth' });
+          }
+        }
+      });
     }
-  }, [keyboardHeight]);
+  }, [isKeyboardVisible, keyboardHeight]);
 
   // Auto-resize textarea - grows with content
   useEffect(() => {
@@ -129,8 +204,13 @@ export function Composer({
     onSubmit(value.trim(), DEFAULT_MODEL);
     setValue('');
     
-    // Blur the textarea to dismiss keyboard and trigger viewport fix
-    textareaRef.current?.blur();
+    // On mobile, blur the textarea to dismiss keyboard
+    // Use a small delay to ensure the submit completes first
+    if (window.innerWidth <= 768) {
+      setTimeout(() => {
+        textareaRef.current?.blur();
+      }, 100);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -150,8 +230,13 @@ export function Composer({
     <div 
       className="relative transition-transform duration-200 ease-out"
       style={{ 
-        // Move composer up when iOS keyboard is visible
-        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined 
+        // Move composer up when mobile keyboard is visible
+        // Use a slightly smaller offset to account for safe area insets
+        transform: isKeyboardVisible && keyboardHeight > 0 
+          ? `translateY(-${Math.max(0, keyboardHeight - 20)}px)` 
+          : undefined,
+        // Ensure composer stays above keyboard
+        zIndex: 50,
       }}
     >
       <div 
@@ -170,7 +255,18 @@ export function Composer({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => setIsFocused(true)}
+          onFocus={() => {
+            setIsFocused(true);
+            // Ensure input is scrolled into view on mobile
+            if (window.innerWidth <= 768) {
+              setTimeout(() => {
+                textareaRef.current?.scrollIntoView({ 
+                  behavior: 'smooth', 
+                  block: 'nearest' 
+                });
+              }, 300);
+            }
+          }}
           onBlur={() => setIsFocused(false)}
           placeholder={placeholder}
           disabled={isLoading}
@@ -186,6 +282,8 @@ export function Composer({
             maxHeight: '200px',
             overflow: value.split('\n').length > 8 ? 'auto' : 'hidden',
             color: 'var(--color-theme-fg)',
+            // Prevent zoom on iOS when focusing input
+            fontSize: '16px', // iOS zooms if font-size < 16px
           }}
         />
         

@@ -888,7 +888,21 @@ export default function Home() {
   return (
     // App shell uses a fixed viewport height and internal scroll containers.
     // This prevents the window from being the scroll container (which breaks chat "scroll to bottom" on open).
-    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: theme.bg.main }}>
+    <div 
+      className="h-dvh flex flex-col overflow-hidden" 
+      style={{ 
+        background: theme.bg.main,
+        // Prevent body scroll on mobile when keyboard is open
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        // Use dynamic viewport height for mobile
+        height: '100dvh',
+        maxHeight: '100dvh',
+      }}
+    >
       {debugBlur && (
         <div className="fixed left-4 right-4 top-28 z-[9999] pointer-events-none">
           <div
@@ -1000,6 +1014,10 @@ export default function Home() {
             ? 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' 
             : 'calc(env(safe-area-inset-top, 0px) + 7rem)',
           paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 5.5rem)',
+          // Prevent layout shifts when keyboard opens
+          minHeight: 0,
+          // Use dynamic viewport height for mobile
+          height: '100%',
         }}
       >
         {isInChatView ? (
@@ -1039,7 +1057,16 @@ export default function Home() {
       </main>
 
       {/* ====== BOTTOM EDGE: Composer ====== */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 pb-safe">
+      <div 
+        className="fixed bottom-0 left-0 right-0 z-40 pb-safe"
+        style={{
+          // Ensure composer container doesn't cause layout shifts
+          willChange: 'transform',
+          // Support for mobile browsers
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)',
+        }}
+      >
         <div className="px-4 pb-4 pt-2">
           <div className="max-w-[700px] mx-auto">
             <Composer
