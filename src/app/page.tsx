@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { Composer } from '@/components/Composer';
 import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { UserAvatarDropdown } from '@/components/UserAvatarDropdown';
@@ -26,9 +27,6 @@ import {
   Message,
 } from '@/lib/cursorClient';
 import {
-  getApiKey,
-  setApiKey,
-  clearApiKey,
   getCachedRepos,
   setCachedRepos,
   getLastSelectedRepo,
@@ -89,9 +87,13 @@ function agentMatchesRepo(agent: Agent, repo: CachedRepo): boolean {
 }
 
 export default function Home() {
+  // NextAuth session
+  const { data: session, status } = useSession();
+  const apiKey = (session?.user as { apiKey?: string })?.apiKey || null;
+  const userEmail = session?.user?.email || null;
+
   // Auth state
   const [isInitializing, setIsInitializing] = useState(true);
-  const [apiKey, setApiKeyState] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [userInfo, setUserInfo] = useState<ApiKeyInfo | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -138,8 +140,7 @@ export default function Home() {
 
   // Centralized auth failure handler
   const handleAuthFailure = useCallback((message = 'Session expired. Please re-enter your API key.') => {
-    clearApiKey();
-    setApiKeyState(null);
+    signOut({ redirect: false });
     setUserInfo(null);
     setRepos([]);
     setSelectedRepo(null);
@@ -147,28 +148,30 @@ export default function Home() {
     toast.error(message);
   }, []);
 
-  // Load API key from localStorage on mount
+  // Initialize session and user info
   useEffect(() => {
-    const storedKey = getApiKey();
-    if (storedKey) {
-      setApiKeyState(storedKey);
+    if (status === 'loading') {
+      return; // Still loading session
+    }
+    
+    if (status === 'authenticated' && apiKey) {
       // Fetch user info to display email (optional - don't block on this)
-      validateApiKey(storedKey)
+      validateApiKey(apiKey)
         .then(setUserInfo)
         .catch((err) => {
-          // Only clear key on actual auth failures (invalid/expired key)
+          // Only clear session on actual auth failures (invalid/expired key)
           if (err instanceof AuthError) {
-            clearApiKey();
-            setApiKeyState(null);
+            signOut({ redirect: false });
           }
-          // For transient errors (network, server), keep the key and continue
+          // For transient errors (network, server), keep the session and continue
           // User can still use the app; email just won't show
           console.warn('Validation failed (non-fatal):', err.message);
         });
     }
-    // Done checking for stored key
+    
+    // Done checking for session
     setIsInitializing(false);
-  }, []);
+  }, [status, apiKey]);
 
   // Show warning if storage is not persistent (e.g., private browsing)
   useEffect(() => {
@@ -473,7 +476,7 @@ export default function Home() {
     }
   }, [handleAuthFailure]);
 
-  // Validate and store API key
+  // Validate and sign in with API key
   const handleValidateKey = async () => {
     if (!apiKeyInput.trim()) return;
 
@@ -482,12 +485,18 @@ export default function Home() {
     trackApiKeySubmit();
 
     try {
-      const info = await validateApiKey(apiKeyInput.trim());
-      setUserInfo(info);
-      setApiKey(apiKeyInput.trim());
-      setApiKeyState(apiKeyInput.trim());
-      setApiKeyInput('');
-      fetchRepos(apiKeyInput.trim());
+      const result = await signIn('credentials', {
+        apiKey: apiKeyInput.trim(),
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setAuthError(result.error === 'CredentialsSignin' ? 'Invalid API key' : result.error);
+      } else {
+        // Success - session will be updated automatically
+        setApiKeyInput('');
+        // Fetch repos will be triggered by the apiKey useEffect
+      }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Invalid API key');
     } finally {
@@ -514,8 +523,7 @@ export default function Home() {
   // Handle logout
   const handleLogout = () => {
     trackLogout();
-    clearApiKey();
-    setApiKeyState(null);
+    signOut({ redirect: false });
     setUserInfo(null);
     setRepos([]);
     setSelectedRepo(null);
@@ -963,7 +971,7 @@ export default function Home() {
               {/* Right side */}
               <div className="flex-shrink-0">
                 <UserAvatarDropdown
-                  userEmail={userInfo?.userEmail}
+                  userEmail={userEmail || userInfo?.userEmail}
                   onLogout={handleLogout}
                   showEmail={!isInChatView}
                 />
