@@ -129,6 +129,17 @@ export function setCachedRepos(repos: CachedRepo[]): void {
   safeSetItem(STORAGE_KEYS.REPOS_FETCHED_AT, Date.now().toString());
 }
 
+// Update a single repo's pushedAt in the cache without changing the fetchedAt timestamp
+export function updateCachedRepoPushedAt(repository: string, pushedAt: string): void {
+  const cached = getCachedRepos(true); // Ignore expiry - we just want to update existing data
+  if (!cached) return;
+  
+  const updated = cached.map(repo => 
+    repo.repository === repository ? { ...repo, pushedAt } : repo
+  );
+  safeSetItem(STORAGE_KEYS.REPOS, JSON.stringify(updated));
+}
+
 export function getLastSelectedRepo(): string | null {
   return safeGetItem(STORAGE_KEYS.LAST_SELECTED_REPO);
 }

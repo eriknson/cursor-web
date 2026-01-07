@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import { Composer } from '@/components/Composer';
+import { ComposerDrawer } from '@/components/ComposerDrawer';
 import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { UserAvatarDropdown } from '@/components/UserAvatarDropdown';
 import { CursorLoader } from '@/components/CursorLoader';
@@ -17,8 +18,8 @@ import {
   launchAgent,
   addFollowUp,
   fetchGitHubRepoInfo,
-  getAgentStatus,
   getAgentConversation,
+  prefetchAgentConversation,
   ApiKeyInfo,
   RateLimitError,
   AuthError,
@@ -31,6 +32,7 @@ import {
   clearApiKey,
   getCachedRepos,
   setCachedRepos,
+  updateCachedRepoPushedAt,
   getLastSelectedRepo,
   setLastSelectedRepo,
   CachedRepo,
@@ -86,6 +88,70 @@ function agentMatchesRepo(agent: Agent, repo: CachedRepo): boolean {
   if (selected.full.endsWith(`/${agentRepo.name}`)) return true;
 
   return false;
+}
+
+// Extract unique repos from agent runs
+// Returns repos in order of most recent agent activity
+function extractReposFromAgents(agents: Agent[]): CachedRepo[] {
+  const repoMap = new Map<string, { repo: CachedRepo; latestActivity: number }>();
+  
+  for (const agent of agents) {
+    const repository = agent.source.repository;
+    // Parse "github.com/owner/repo" or "owner/repo" format
+    const parts = repository.split('/');
+    let owner = '';
+    let name = '';
+    
+    if (parts.length >= 3 && parts[0].includes('github')) {
+      owner = parts[1];
+      name = parts[2];
+    } else if (parts.length >= 2) {
+      owner = parts[parts.length - 2];
+      name = parts[parts.length - 1];
+    } else {
+      name = repository;
+    }
+    
+    const key = `${owner}/${name}`.toLowerCase();
+    const activityTime = new Date(agent.createdAt).getTime();
+    
+    const existing = repoMap.get(key);
+    if (!existing || activityTime > existing.latestActivity) {
+      repoMap.set(key, {
+        repo: { owner, name, repository },
+        latestActivity: activityTime,
+      });
+    }
+  }
+  
+  // Sort by most recent activity
+  return Array.from(repoMap.values())
+    .sort((a, b) => b.latestActivity - a.latestActivity)
+    .map(({ repo }) => repo);
+}
+
+// Merge repos from multiple sources, preserving order and deduping
+function mergeRepos(primary: CachedRepo[], secondary: CachedRepo[]): CachedRepo[] {
+  const seen = new Set<string>();
+  const result: CachedRepo[] = [];
+  
+  for (const repo of primary) {
+    const key = `${repo.owner}/${repo.name}`.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(repo);
+    }
+  }
+  
+  for (const repo of secondary) {
+    const key = `${repo.owner}/${repo.name}`.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(repo);
+    }
+  }
+  
+  return result;
 }
 
 export default function Home() {
@@ -147,24 +213,19 @@ export default function Home() {
     toast.error(message);
   }, []);
 
-  // Load API key from localStorage on mount
+  // Load API key and stale cache from localStorage on mount
+  // Show stale data immediately - don't wait for API
   useEffect(() => {
     const storedKey = getApiKey();
     if (storedKey) {
       setApiKeyState(storedKey);
-      // Fetch user info to display email (optional - don't block on this)
-      validateApiKey(storedKey)
-        .then(setUserInfo)
-        .catch((err) => {
-          // Only clear key on actual auth failures (invalid/expired key)
-          if (err instanceof AuthError) {
-            clearApiKey();
-            setApiKeyState(null);
-          }
-          // For transient errors (network, server), keep the key and continue
-          // User can still use the app; email just won't show
-          console.warn('Validation failed (non-fatal):', err.message);
-        });
+      
+      // Show stale repos immediately (even if expired) - no loading state
+      const staleRepos = getCachedRepos(true); // true = ignore expiry
+      if (staleRepos && staleRepos.length > 0) {
+        setRepos(staleRepos);
+        setIsLoadingRepos(false); // No loading state when we have cache
+      }
     }
     // Done checking for stored key
     setIsInitializing(false);
@@ -180,20 +241,37 @@ export default function Home() {
   }, []);
 
   // Fetch runs from Cursor API (source of truth - syncs across all devices)
-  const fetchRuns = useCallback(async (key: string) => {
+  // Also extracts repos from agents for fast repo picker population
+  const fetchRuns = useCallback(async (key: string, isBackground = false) => {
     if (runsFetchInFlight.current) return;
     runsFetchInFlight.current = true;
     
     try {
       const agents = await listAgents(key, 50);
       setRuns(agents);
+      
+      // Extract repos from agents and merge with existing repos
+      // This gives us fast repo data from runs without waiting for /repositories
+      if (agents.length > 0) {
+        const reposFromAgents = extractReposFromAgents(agents);
+        setRepos(prev => {
+          // Repos from agents go first (most relevant), then existing repos
+          const merged = mergeRepos(reposFromAgents, prev);
+          return merged;
+        });
+        // Clear loading state since we now have repo data
+        setIsLoadingRepos(false);
+      }
     } catch (err) {
       console.error('Failed to fetch agents:', err);
       if (err instanceof AuthError) {
         handleAuthFailure();
       } else if (err instanceof RateLimitError) {
-        toast.warning('Rate limited while fetching runs');
-      } else {
+        // Only show toast on foreground fetches
+        if (!isBackground) {
+          toast.warning('Rate limited while fetching runs');
+        }
+      } else if (!isBackground) {
         toast.error('Failed to load runs');
       }
     } finally {
@@ -202,26 +280,7 @@ export default function Home() {
     }
   }, [handleAuthFailure]);
 
-  // Load runs when API key is available
-  useEffect(() => {
-    if (apiKey) {
-      setIsLoadingRuns(true);
-      fetchRuns(apiKey);
-    }
-  }, [apiKey, fetchRuns]);
-
-  // Poll for run updates every 30 seconds to keep list synced across devices
-  useEffect(() => {
-    if (!apiKey) return;
-    
-    const interval = setInterval(() => {
-      fetchRuns(apiKey);
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [apiKey, fetchRuns]);
-
-  const prefetchAgentConversation = useCallback(async (agent: Agent) => {
+  const prefetchAgentData = useCallback(async (agent: Agent) => {
     if (!apiKey) return;
     if (!agent?.id) return;
 
@@ -233,7 +292,8 @@ export default function Home() {
     agentPrefetchInFlightRef.current.add(agent.id);
 
     try {
-      const conversation = await getAgentConversation(apiKey, agent.id);
+      // Use the low-priority prefetch variant to avoid blocking user actions
+      const conversation = await prefetchAgentConversation(apiKey, agent.id);
       setAgentCache((prev) => {
         if (prev[agent.id]) return prev;
         return { ...prev, [agent.id]: { agent, messages: conversation.messages || [] } };
@@ -248,20 +308,28 @@ export default function Home() {
     }
   }, [apiKey, agentCache, handleAuthFailure]);
 
-  // Preload agent data for recent cloud runs
+  // Track when initial data load completed to delay prefetching
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // Preload agent data for recent cloud runs (after initial load settles)
   useEffect(() => {
-    if (!apiKey || runs.length === 0) return;
+    if (!apiKey || runs.length === 0 || !initialLoadComplete) return;
 
-    // Preload first 5 recent runs (runs are already Agent[] from API)
-    const toPreload = runs.slice(0, 5);
+    // Preload first 3 recent runs (reduced from 5 to be less aggressive)
+    const toPreload = runs.slice(0, 3);
 
-    // Stagger preloads to avoid rate limits
-    toPreload.forEach((agent, idx) => {
-      setTimeout(() => {
-        prefetchAgentConversation(agent);
-      }, idx * 500);
-    });
-  }, [apiKey, runs, prefetchAgentConversation]);
+    // Delay prefetching by 2 seconds after initial load to let critical requests complete
+    const timeout = setTimeout(() => {
+      // Stagger preloads - queue handles rate limiting, but stagger reduces burst
+      toPreload.forEach((agent, idx) => {
+        setTimeout(() => {
+          prefetchAgentData(agent);
+        }, idx * 300);
+      });
+    }, 2000);
+    
+    return () => clearTimeout(timeout);
+  }, [apiKey, runs, initialLoadComplete, prefetchAgentData]);
 
   // Normalize repository string to "owner/repo" format for consistent matching
   const normalizeRepoKey = (repo: string) => {
@@ -325,48 +393,28 @@ export default function Home() {
   }, [repos, repoLastUsedMap]);
 
   // Prefetch the latest agent conversation for repos with recent activity so opening feels instant.
-  useEffect(() => {
-    if (!apiKey || runs.length === 0 || sortedRepos.length === 0) return;
-
-    const PREFETCH_REPO_COUNT = 6;
-    const PREFETCH_AGENTS_PER_REPO = 1;
-
-    // Repos with activity, sorted by most recent activity (same ordering as picker)
-    const reposWithActivity = sortedRepos
-      .filter((r) => (repoLastUsedMap.get(normalizeRepoKey(r.repository)) ?? 0) > 0)
-      .slice(0, PREFETCH_REPO_COUNT);
-
-    const agentsToPrefetch: Agent[] = [];
-
-    for (const repo of reposWithActivity) {
-      const latestForRepo = runs
-        .filter((a) => agentMatchesRepo(a, repo))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, PREFETCH_AGENTS_PER_REPO);
-
-      agentsToPrefetch.push(...latestForRepo);
-    }
-
-    // Stagger to avoid rate limits / bursts
-    agentsToPrefetch.forEach((agent, idx) => {
-      setTimeout(() => prefetchAgentConversation(agent), idx * 450);
-    });
-  }, [apiKey, runs, sortedRepos, repoLastUsedMap, prefetchAgentConversation]);
+  // This is now much more conservative - only prefetch after user selects a repo.
+  // The initial aggressive prefetching was causing rate limits on login.
 
   // When the user picks a repo, eagerly prefetch a couple of its most recent conversations.
   useEffect(() => {
     if (!apiKey || !selectedRepo || runs.length === 0) return;
 
-    const PREFETCH_AGENTS_FOR_SELECTED_REPO = 3;
+    const PREFETCH_AGENTS_FOR_SELECTED_REPO = 2; // Reduced from 3
     const latestForRepo = runs
       .filter((a) => agentMatchesRepo(a, selectedRepo))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, PREFETCH_AGENTS_FOR_SELECTED_REPO);
 
-    latestForRepo.forEach((agent, idx) => {
-      setTimeout(() => prefetchAgentConversation(agent), idx * 350);
-    });
-  }, [apiKey, selectedRepo, runs, prefetchAgentConversation]);
+    // Small delay to let other requests finish first
+    const timeout = setTimeout(() => {
+      latestForRepo.forEach((agent, idx) => {
+        setTimeout(() => prefetchAgentData(agent), idx * 300);
+      });
+    }, 500);
+    
+    return () => clearTimeout(timeout);
+  }, [apiKey, selectedRepo, runs, prefetchAgentData]);
 
   // Auto-select default repo when repos are loaded
   useEffect(() => {
@@ -385,93 +433,138 @@ export default function Home() {
     }
   }, [sortedRepos, selectedRepo]);
 
-  // Fetch repos when API key is available
+  // Fetch full repo list from Cursor API in background
+  // Merges with existing repos (from cache or extracted from agents)
+  // This is a background enrichment - doesn't block UI
   const fetchRepos = useCallback(async (key: string) => {
-    const cached = getCachedRepos();
+    // Check if we have fresh cache - skip API call if so
+    const cached = getCachedRepos(); // Respects expiry
     if (cached && cached.length > 0) {
-      setRepos(cached);
+      // Merge fresh cache with any repos we already have (from agents)
+      setRepos(prev => mergeRepos(prev, cached));
+      setIsLoadingRepos(false);
       return;
     }
 
-    setIsLoadingRepos(true);
+    // Don't set loading state here - we might already have repos from agents/stale cache
     try {
       const repoList = await listRepositories(key);
       
-      // Map repos, using pushedAt from Cursor API if available
-      // Only fetch from GitHub for repos without pushedAt (as fallback)
-      const BATCH_SIZE = 10;
-      const mappedRepos: CachedRepo[] = [];
+      // Map repos with data from Cursor API
+      const mappedRepos: CachedRepo[] = repoList.map(r => ({
+        owner: r.owner,
+        name: r.name,
+        repository: r.repository,
+        pushedAt: r.pushedAt,
+      }));
       
-      // Repos that need GitHub fallback (no pushedAt from Cursor API)
-      const needsGitHubInfo: { repo: typeof repoList[0]; index: number }[] = [];
+      // Merge with existing repos - keep repos from agents first (most relevant)
+      setRepos(prev => {
+        const merged = mergeRepos(prev, mappedRepos);
+        // Update cache with merged result
+        setCachedRepos(merged);
+        return merged;
+      });
+      setIsLoadingRepos(false);
       
-      // First pass: map all repos, note which need GitHub fallback
-      for (let i = 0; i < repoList.length; i++) {
-        const r = repoList[i];
-        mappedRepos.push({
-          owner: r.owner,
-          name: r.name,
-          repository: r.repository,
-          pushedAt: r.pushedAt, // Use Cursor API's pushedAt if available
-        });
-        if (!r.pushedAt) {
-          needsGitHubInfo.push({ repo: r, index: i });
-        }
-      }
-      
-      // Second pass: fetch pushedAt from GitHub for repos without it (in batches)
-      // GitHub allows 60 requests/hour for unauthenticated users
-      for (let i = 0; i < needsGitHubInfo.length; i += BATCH_SIZE) {
-        const batch = needsGitHubInfo.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(
-          batch.map(async ({ repo, index }) => {
+      // Fetch GitHub pushedAt in background for repos without it
+      const needsGitHubInfo = repoList.filter(r => !r.pushedAt);
+      if (needsGitHubInfo.length > 0) {
+        needsGitHubInfo.forEach(async (repo) => {
+          try {
             const githubInfo = await fetchGitHubRepoInfo(repo.owner, repo.name);
-            return { index, pushedAt: githubInfo?.pushedAt };
-          })
-        );
-        
-        // Update the repos with GitHub data
-        for (const { index, pushedAt } of batchResults) {
-          if (pushedAt) {
-            mappedRepos[index].pushedAt = pushedAt;
+            if (githubInfo?.pushedAt) {
+              setRepos(prev => prev.map(r => 
+                r.repository === repo.repository 
+                  ? { ...r, pushedAt: githubInfo.pushedAt } 
+                  : r
+              ));
+              updateCachedRepoPushedAt(repo.repository, githubInfo.pushedAt);
+            }
+          } catch {
+            // Silently ignore GitHub failures
           }
-        }
-        
-        // Small delay between batches to be nice to the API
-        if (i + BATCH_SIZE < needsGitHubInfo.length) {
-          await new Promise(r => setTimeout(r, 100));
-        }
+        });
       }
-      
-      setRepos(mappedRepos);
-      setCachedRepos(mappedRepos);
     } catch (err) {
       console.error('Failed to fetch repos:', err);
       if (err instanceof AuthError) {
         handleAuthFailure();
         return;
       }
-      // On rate limit, try stale cache (ignore expiry)
+      // Silently fail background fetch - we likely already have repos from agents
       if (err instanceof RateLimitError) {
-        const staleCache = getCachedRepos(true);
-        if (staleCache && staleCache.length > 0) {
-          console.warn('Rate limited, using stale cache');
-          setRepos(staleCache);
-          toast.warning('Rate limited - showing cached repositories');
-          return;
-        }
-        toast.warning('Rate limited while fetching repositories');
-      } else {
-        toast.error('Failed to load repositories');
+        console.warn('Rate limited fetching repos - using existing data');
       }
-      // Fall back to cached data on other errors
-      if (cached && cached.length > 0) {
-        setRepos(cached);
-      }
-    } finally {
       setIsLoadingRepos(false);
     }
   }, [handleAuthFailure]);
+
+  // Initial data loading - optimized for fast repo picker:
+  // 1. Stale cache shown immediately on mount (no waiting)
+  // 2. Validate key, then fetch runs (extracts repos from agents)
+  // 3. Background fetch full repo list for completeness
+  useEffect(() => {
+    if (!apiKey) return;
+    
+    const key = apiKey;
+    let cancelled = false;
+    
+    async function loadInitialData() {
+      setIsLoadingRuns(true);
+      // Don't set isLoadingRepos - we might already have data from stale cache
+      
+      try {
+        // 1. Validate API key first (also gets user info)
+        const info = await validateApiKey(key);
+        if (cancelled) return;
+        setUserInfo(info);
+        
+        // 2. Small delay before next request
+        await new Promise(r => setTimeout(r, 100));
+        if (cancelled) return;
+        
+        // 3. Fetch runs FIRST - this also extracts repos from agents
+        // User can start working as soon as this completes
+        await fetchRuns(key);
+        if (cancelled) return;
+        
+        // 4. Mark initial load complete
+        setInitialLoadComplete(true);
+        
+        // 5. Background fetch full repo list (non-blocking, for completeness)
+        // Small delay to let critical requests settle
+        await new Promise(r => setTimeout(r, 200));
+        if (cancelled) return;
+        fetchRepos(key); // Don't await - runs in background
+        
+      } catch (err) {
+        if (cancelled) return;
+        
+        if (err instanceof AuthError) {
+          clearApiKey();
+          setApiKeyState(null);
+        }
+        console.error('Initial load failed:', err);
+      }
+    }
+    
+    loadInitialData();
+    
+    return () => { cancelled = true; };
+  }, [apiKey, fetchRepos, fetchRuns]);
+
+  // Poll for run updates every 30 seconds to keep list synced across devices
+  useEffect(() => {
+    if (!apiKey || !initialLoadComplete) return;
+    
+    const key = apiKey;
+    const interval = setInterval(() => {
+      fetchRuns(key, true); // Background fetch - suppress rate limit toasts
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [apiKey, initialLoadComplete, fetchRuns]);
 
   // Validate and store API key
   const handleValidateKey = async () => {
@@ -487,7 +580,8 @@ export default function Home() {
       setApiKey(apiKeyInput.trim());
       setApiKeyState(apiKeyInput.trim());
       setApiKeyInput('');
-      fetchRepos(apiKeyInput.trim());
+      // Data fetching will be triggered by the serialized loadInitialData effect
+      // when apiKeyState changes - no need to call fetchRepos here
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Invalid API key');
     } finally {
@@ -495,12 +589,8 @@ export default function Home() {
     }
   };
 
-  // Fetch repos when API key changes
-  useEffect(() => {
-    if (apiKey) {
-      fetchRepos(apiKey);
-    }
-  }, [apiKey, fetchRepos]);
+  // Note: Repos are fetched in the serialized loadInitialData effect above
+  // This prevents duplicate/parallel fetches that cause rate limiting
 
   // Handle repo selection with persistence
   const handleSelectRepo = (repo: CachedRepo) => {
@@ -1027,7 +1117,7 @@ export default function Home() {
               <HomeActivityList
                 agents={runs}
                 onSelectAgent={handleSelectAgent}
-                onPrefetchAgent={prefetchAgentConversation}
+                onPrefetchAgent={prefetchAgentData}
                 isLoading={isLoadingRuns}
                 selectedRepo={selectedRepo}
                 hideSearch={true}
@@ -1042,7 +1132,7 @@ export default function Home() {
       <div className="fixed bottom-0 left-0 right-0 z-40 pb-safe">
         <div className="px-4 pb-4 pt-2">
           <div className="max-w-[700px] mx-auto">
-            <Composer
+            <ComposerDrawer
               onSubmit={handleLaunch}
               isLoading={isLaunching}
               disabled={!launchRepo}

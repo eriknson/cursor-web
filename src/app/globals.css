@@ -338,6 +338,38 @@ select:focus-visible {
   min-height: 100dvh !important; /* Dynamic viewport height for iOS */
 }
 
+/* Vaul bottom sheet optimizations */
+[vaul-drawer] {
+  /* Smooth spring animation */
+  transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+[vaul-drawer][data-state="open"] {
+  transform: translateY(0) !important;
+}
+
+[vaul-overlay] {
+  transition: opacity 0.3s ease-out !important;
+}
+
+/* Ensure textarea doesn't zoom on iOS when focused */
+[vaul-drawer] textarea {
+  font-size: 16px !important; /* iOS won't zoom if font-size >= 16px */
+}
+
+/* Native select styling for model picker */
+[vaul-drawer] select {
+  font-size: 13px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+[vaul-drawer] select option {
+  background: var(--color-theme-bg);
+  color: var(--color-theme-fg);
+  padding: 8px 12px;
+}
+
 /* Mobile touch feedback - active states */
 button:active:not(:disabled),
 [role="button"]:active:not(:disabled),

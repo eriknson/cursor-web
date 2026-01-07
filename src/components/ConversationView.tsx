@@ -166,9 +166,9 @@ interface ConversationViewProps {
 const INITIAL_POLL_INTERVAL = 1000;
 const NORMAL_POLL_INTERVAL = 2000;
 const BACKOFF_POLL_INTERVAL = 5000;
-// Fetch conversation every 2nd poll to avoid rate limiting
-// The Cursor API rate limits conversation endpoint more strictly than status
-const CONVERSATION_POLL_FREQUENCY = 2;
+// Fetch conversation every 3rd poll (~3 seconds) to avoid rate limiting
+// Status is still polled every 1-2 seconds for responsive UI
+const CONVERSATION_POLL_FREQUENCY = 3;
 
 // Normalize text whitespace - collapse multiple newlines into single
 function normalizeText(text: string): string {
@@ -480,8 +480,9 @@ function CloudAgentView({
         </div>
       )}
 
-      {/* Commit confirmation - show when finished successfully */}
-      {agent && agent.status === 'FINISHED' && (
+      {/* Commit confirmation - show after summary when finished successfully */}
+      {/* Only show when we have the summary to ensure correct visual order */}
+      {agent && agent.status === 'FINISHED' && !isActive && agent.summary && !summaryStale && (
         <CommitConfirmation agent={agent} />
       )}
     </div>
@@ -740,30 +741,51 @@ export function ConversationView({
 
     // Only fetch conversation on initial load, forced, every N polls, or when agent is terminal
     // When agent is terminal, always fetch to ensure we get all final messages
-    // Also respect rate limit backoff
+    // Also respect rate limit backoff - but BYPASS it for forced fetches (critical for terminal state)
     const isConversationRateLimited = Date.now() < conversationRateLimitedUntilRef.current;
     const agentIsTerminal = agentStatusAfterFetch === 'FINISHED' || 
                             agentStatusAfterFetch === 'ERROR' || 
                             agentStatusAfterFetch === 'STOPPED' ||
                             agentStatusAfterFetch === 'EXPIRED';
-    const shouldFetchConversation = !isConversationRateLimited && (
-      isInitial || forceConversation || agentIsTerminal ||
-      (pollCountRef.current % CONVERSATION_POLL_FREQUENCY === 0)
+    // forceConversation bypasses rate limit - used when we MUST get final messages
+    const shouldFetchConversation = forceConversation || (
+      !isConversationRateLimited && (
+        isInitial || agentIsTerminal ||
+        (pollCountRef.current % CONVERSATION_POLL_FREQUENCY === 0)
+      )
     );
     
     if (shouldFetchConversation) {
       try {
         const conv = await getAgentConversation(apiKey, agentId);
-        const newMessages = conv.messages || [];
+        const fetchedMessages = conv.messages || [];
         
-        const newIds = new Set(newMessages.map(m => m.id));
-        const hasChanges = newMessages.some(m => !messageIdsRef.current.has(m.id)) ||
-                          newMessages.length !== messageIdsRef.current.size;
+        // Accumulate messages - never lose messages we've already seen
+        // This prevents flickering when API returns incomplete data temporarily
+        setMessages(prevMessages => {
+          // If API returns at least as many messages as we have, use API order
+          // (it's authoritative and in correct chronological order)
+          if (fetchedMessages.length >= prevMessages.length) {
+            messageIdsRef.current = new Set(fetchedMessages.map(m => m.id));
+            return fetchedMessages;
+          }
+          
+          // API returned fewer messages (temporary incomplete response)
+          // Keep our existing messages and only add truly new ones
+          const existingIds = new Set(prevMessages.map(m => m.id));
+          const newMessages = fetchedMessages.filter(m => !existingIds.has(m.id));
+          
+          if (newMessages.length === 0) {
+            // No new messages, keep what we have
+            return prevMessages;
+          }
+          
+          // Append new messages to the end
+          const merged = [...prevMessages, ...newMessages];
+          messageIdsRef.current = new Set(merged.map(m => m.id));
+          return merged;
+        });
         
-        if (hasChanges) {
-          messageIdsRef.current = newIds;
-          setMessages(newMessages);
-        }
         gotData = true;
         // Reset rate limit on success
         conversationRateLimitedUntilRef.current = 0;
@@ -827,7 +849,8 @@ export function ConversationView({
         const previousMessageCount = messageIdsRef.current.size;
         
         // Give server a moment to finalize, then fetch final state
-        await new Promise(r => setTimeout(r, 500));
+        // Use a longer delay to ensure server has time to commit final messages
+        await new Promise(r => setTimeout(r, 800));
         await fetchAll(false, true);
         
         // Check if we got new messages - if so, wait a bit more and fetch again
@@ -836,16 +859,21 @@ export function ConversationView({
         
         if (gotNewMessages) {
           // If we got new messages, wait a bit more and fetch again to catch any remaining
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 1200));
           await fetchAll(false, true);
         }
         
-        // Do one more fetch after a bit longer to catch any delayed updates like summary
+        // Always do one more fetch after a short delay to ensure we have all messages
+        // This catches edge cases where messages are still being finalized
+        await new Promise(r => setTimeout(r, 1000));
+        await fetchAll(false, true);
+        
+        // Do one final fetch after a bit longer to catch any delayed updates like summary
         setTimeout(async () => {
           if (currentAgentIdRef.current === agentIdToCheck) {
             await fetchAll(false, true);
           }
-        }, 2000);
+        }, 2500);
         return;
       }
       

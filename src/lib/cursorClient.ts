@@ -12,12 +12,21 @@ import {
   MalformedResponseError,
   NotFoundError,
 } from './cursorTypes';
+import { requestQueue } from './requestQueue';
 
 const CURSOR_API_BASE = 'https://api.cursor.com/v0';
 const USE_PROXY = true;
 const DEFAULT_TIMEOUT_MS = 30000; // 30s - generous to avoid killing slow responses
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 400;
+
+// Priority levels for request queue
+const PRIORITY = {
+  USER_ACTION: 1, // User-initiated actions (launch, stop, follow-up)
+  CRITICAL: 5, // Auth, status checks
+  NORMAL: 10, // Regular fetches
+  PREFETCH: 20, // Background preloading
+} as const;
 
 type HttpMethod = 'GET' | 'POST' | 'DELETE';
 
@@ -157,50 +166,85 @@ async function fetchWithResilience<T>(
 }
 
 // --------------------
-// Public API
+// Public API (all requests go through the rate-limited queue)
 // --------------------
 
 export async function validateApiKey(apiKey: string): Promise<ApiKeyInfo> {
-  return fetchWithResilience<ApiKeyInfo>('/me', 'GET', apiKey);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<ApiKeyInfo>('/me', 'GET', apiKey),
+    PRIORITY.CRITICAL
+  );
 }
 
 export async function listRepositories(apiKey: string): Promise<Repository[]> {
-  const data = await fetchWithResilience<{ repositories: Repository[] }>('/repositories', 'GET', apiKey);
-  return data.repositories || [];
+  return requestQueue.enqueue(async () => {
+    const data = await fetchWithResilience<{ repositories: Repository[] }>('/repositories', 'GET', apiKey);
+    return data.repositories || [];
+  }, PRIORITY.NORMAL);
 }
 
 export async function listAgents(apiKey: string, limit = 20): Promise<Agent[]> {
-  const data = await fetchWithResilience<{ agents: Agent[] }>(`/agents?limit=${limit}`, 'GET', apiKey);
-  return data.agents || [];
+  return requestQueue.enqueue(async () => {
+    const data = await fetchWithResilience<{ agents: Agent[] }>(`/agents?limit=${limit}`, 'GET', apiKey);
+    return data.agents || [];
+  }, PRIORITY.NORMAL);
 }
 
 export async function getAgentStatus(apiKey: string, agentId: string): Promise<Agent> {
-  return fetchWithResilience<Agent>(`/agents/${agentId}`, 'GET', apiKey);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<Agent>(`/agents/${agentId}`, 'GET', apiKey),
+    PRIORITY.NORMAL
+  );
 }
 
 export async function getAgentConversation(apiKey: string, agentId: string): Promise<ConversationResponse> {
-  return fetchWithResilience<ConversationResponse>(`/agents/${agentId}/conversation`, 'GET', apiKey);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<ConversationResponse>(`/agents/${agentId}/conversation`, 'GET', apiKey),
+    PRIORITY.NORMAL
+  );
+}
+
+// Prefetch variant - lower priority, won't block user actions
+export async function prefetchAgentConversation(apiKey: string, agentId: string): Promise<ConversationResponse> {
+  return requestQueue.enqueue(
+    () => fetchWithResilience<ConversationResponse>(`/agents/${agentId}/conversation`, 'GET', apiKey),
+    PRIORITY.PREFETCH
+  );
 }
 
 export async function launchAgent(apiKey: string, params: LaunchAgentParams): Promise<Agent> {
-  return fetchWithResilience<Agent>('/agents', 'POST', apiKey, params);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<Agent>('/agents', 'POST', apiKey, params),
+    PRIORITY.USER_ACTION
+  );
 }
 
 export async function addFollowUp(apiKey: string, agentId: string, params: FollowUpParams): Promise<{ id: string }> {
-  return fetchWithResilience<{ id: string }>(`/agents/${agentId}/followup`, 'POST', apiKey, params);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<{ id: string }>(`/agents/${agentId}/followup`, 'POST', apiKey, params),
+    PRIORITY.USER_ACTION
+  );
 }
 
 export async function stopAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
-  return fetchWithResilience<{ id: string }>(`/agents/${agentId}/stop`, 'POST', apiKey);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<{ id: string }>(`/agents/${agentId}/stop`, 'POST', apiKey),
+    PRIORITY.USER_ACTION
+  );
 }
 
 export async function deleteAgent(apiKey: string, agentId: string): Promise<{ id: string }> {
-  return fetchWithResilience<{ id: string }>(`/agents/${agentId}`, 'DELETE', apiKey);
+  return requestQueue.enqueue(
+    () => fetchWithResilience<{ id: string }>(`/agents/${agentId}`, 'DELETE', apiKey),
+    PRIORITY.USER_ACTION
+  );
 }
 
 export async function listModels(apiKey: string): Promise<string[]> {
-  const data = await fetchWithResilience<{ models: string[] }>('/models', 'GET', apiKey);
-  return data.models || [];
+  return requestQueue.enqueue(async () => {
+    const data = await fetchWithResilience<{ models: string[] }>('/models', 'GET', apiKey);
+    return data.models || [];
+  }, PRIORITY.NORMAL);
 }
 
 // Fetch pushed_at timestamp from GitHub API for a repository
