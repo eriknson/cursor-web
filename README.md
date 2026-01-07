@@ -26,3 +26,7 @@ A web interface for launching and managing Cursor Cloud Agents.
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
+
+## Fun Fact ❄️
+
+Why do developers love building in the winter? Because there are no bugs! 🐛 (They're all hibernating!)
