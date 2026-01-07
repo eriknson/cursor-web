@@ -2,6 +2,10 @@
 
 A web interface for launching and managing Cursor Cloud Agents.
 
+## San Francisco Coding Joke
+
+Why do San Francisco developers prefer async/await over callbacks? Because even their code needs to wait in line for a $7 coffee! ☕🌉
+
 ## Features
 
 - Launch cloud agents on any connected GitHub repository
