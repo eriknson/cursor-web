@@ -9,10 +9,6 @@ A web interface for launching and managing Cursor Cloud Agents.
 - Activity history with recent runs
 - Model selection (composer-1, opus-4.5, gpt-5.2)
 
-## Fun Fact 🐧
-
-Why don't penguins like talking to strangers at parties? Because they break the ice!
-
 ## Setup
 
 1. Install dependencies:
