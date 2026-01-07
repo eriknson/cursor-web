@@ -892,15 +892,11 @@ export default function Home() {
       className="h-dvh flex flex-col overflow-hidden" 
       style={{ 
         background: theme.bg.main,
-        // Prevent body scroll on mobile when keyboard is open
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         // Use dynamic viewport height for mobile
         height: '100dvh',
         maxHeight: '100dvh',
+        // On mobile, body is already fixed, so we don't need to fix this too
+        // This prevents double-fixing which could break dropdowns/modals
       }}
     >
       {debugBlur && (
