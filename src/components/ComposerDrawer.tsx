@@ -11,7 +11,8 @@ const MODELS = [
   { id: 'opus-4.5', label: 'Opus 4.5' },
 ] as const;
 
-const DEFAULT_MODEL = MODELS[0].id;
+type ModelId = (typeof MODELS)[number]['id'];
+const DEFAULT_MODEL: ModelId = MODELS[0].id;
 
 // Quick, snappy easing curve
 const EASE_CURVE = 'cubic-bezier(0.2, 0, 0, 1)';
@@ -283,7 +284,7 @@ export function ComposerDrawer({
               </span>
               <select
                 value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
+                onChange={(e) => setSelectedModel(e.target.value as ModelId)}
                 className="appearance-none border-none outline-none cursor-pointer text-[13px] h-8 pr-6 pl-3 rounded-full"
                 style={{
                   color: 'var(--color-theme-text-tertiary)',
