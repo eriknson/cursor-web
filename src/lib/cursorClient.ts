@@ -292,6 +292,22 @@ export function getGitHubCompareUrl(repository: string, baseRef: string, branchN
   return `https://github.com/${parsed.owner}/${parsed.repo}/compare/${baseRef}...${branchName}`;
 }
 
+// Check if a URL is an actual preview deployment URL (not the Vercel dashboard)
+function isPreviewDeploymentUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    // Vercel dashboard URLs are on vercel.com
+    // Actual preview deployments are on *.vercel.app or custom domains
+    if (parsed.hostname === 'vercel.com') {
+      return false;
+    }
+    // Accept .vercel.app domains and any other domain (could be custom)
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Fetch Vercel preview deployment URL from GitHub APIs
 // Tries multiple approaches since Vercel's integration varies
 export async function fetchVercelPreviewUrl(
@@ -335,13 +351,16 @@ export async function fetchVercelPreviewUrl(
 
         if (statusesRes.ok) {
           const statuses = await statusesRes.json();
-          console.log('[Preview] Deployment statuses:', statuses.map((s: { state: string; environment_url?: string }) => ({ state: s.state, url: s.environment_url })));
+          console.log('[Preview] Deployment statuses:', statuses.map((s: { state: string; environment_url?: string; log_url?: string }) => ({ state: s.state, env_url: s.environment_url, log_url: s.log_url })));
           
           if (Array.isArray(statuses)) {
-            // Find success status with environment_url (or any status with a URL)
+            // Find success status with environment_url (the actual preview app URL)
+            // environment_url is the preview app, log_url is the dashboard
             const statusWithUrl = statuses.find(
               (s: { state: string; environment_url?: string }) =>
-                s.environment_url && (s.state === 'success' || s.state === 'active')
+                s.environment_url && 
+                (s.state === 'success' || s.state === 'active') &&
+                isPreviewDeploymentUrl(s.environment_url)
             );
             if (statusWithUrl?.environment_url) {
               console.log('[Preview] Found URL via deployments API:', statusWithUrl.environment_url);
@@ -353,6 +372,7 @@ export async function fetchVercelPreviewUrl(
     }
 
     // Approach 2: Try commit statuses API (Vercel also posts status checks here)
+    // Note: target_url here is often the dashboard, not the preview - but check anyway
     console.log('[Preview] Trying commit statuses API...');
     const statusesRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/statuses`,
@@ -366,12 +386,13 @@ export async function fetchVercelPreviewUrl(
       console.log('[Preview] Commit statuses:', statuses.map((s: { context?: string; state?: string; target_url?: string }) => ({ context: s.context, state: s.state, url: s.target_url })));
       
       if (Array.isArray(statuses)) {
-        // Look for Vercel status with a target_url
+        // Look for Vercel status with a target_url that's a real preview (not dashboard)
         const vercelStatus = statuses.find(
           (s: { context?: string; target_url?: string; state?: string }) =>
             s.context?.toLowerCase().includes('vercel') &&
             s.target_url &&
-            s.state === 'success'
+            s.state === 'success' &&
+            isPreviewDeploymentUrl(s.target_url)
         );
         if (vercelStatus?.target_url) {
           console.log('[Preview] Found URL via commit statuses:', vercelStatus.target_url);
@@ -381,6 +402,7 @@ export async function fetchVercelPreviewUrl(
     }
 
     // Approach 3: Try combined status (check runs) API
+    // Note: details_url is typically the dashboard, so less likely to work
     console.log('[Preview] Trying check runs API...');
     const checkRunsRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/check-runs`,
@@ -394,12 +416,13 @@ export async function fetchVercelPreviewUrl(
       console.log('[Preview] Check runs:', checkRunsData.check_runs?.map((c: { name?: string; app?: { slug?: string }; conclusion?: string; details_url?: string }) => ({ name: c.name, app: c.app?.slug, conclusion: c.conclusion, url: c.details_url })));
       
       if (checkRunsData.check_runs && Array.isArray(checkRunsData.check_runs)) {
-        // Look for Vercel check run with details_url
+        // Look for Vercel check run with details_url that's a real preview
         const vercelCheck = checkRunsData.check_runs.find(
           (c: { name?: string; app?: { slug?: string }; details_url?: string; conclusion?: string }) =>
             (c.name?.toLowerCase().includes('vercel') || c.app?.slug === 'vercel') &&
             c.details_url &&
-            c.conclusion === 'success'
+            c.conclusion === 'success' &&
+            isPreviewDeploymentUrl(c.details_url)
         );
         if (vercelCheck?.details_url) {
           console.log('[Preview] Found URL via check runs:', vercelCheck.details_url);
