@@ -292,5 +292,129 @@ export function getGitHubCompareUrl(repository: string, baseRef: string, branchN
   return `https://github.com/${parsed.owner}/${parsed.repo}/compare/${baseRef}...${branchName}`;
 }
 
+// Fetch Vercel preview deployment URL from GitHub APIs
+// Tries multiple approaches since Vercel's integration varies
+export async function fetchVercelPreviewUrl(
+  owner: string,
+  repo: string,
+  branchOrSha: string
+): Promise<string | null> {
+  try {
+    // Approach 1: Try GitHub Deployments API (Vercel creates deployments here)
+    // Don't filter by environment name since Vercel uses various formats like "Preview", "Preview – projectname", etc.
+    const deploymentsUrl = `https://api.github.com/repos/${owner}/${repo}/deployments?ref=${encodeURIComponent(branchOrSha)}`;
+    console.log('[Preview] Trying deployments API:', deploymentsUrl);
+    
+    const deploymentsRes = await fetch(deploymentsUrl, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+    });
+
+    console.log('[Preview] Deployments response status:', deploymentsRes.status);
+
+    if (deploymentsRes.ok) {
+      const deployments = await deploymentsRes.json();
+      console.log('[Preview] Deployments found:', deployments.length, deployments.map((d: { environment?: string; creator?: { login?: string } }) => ({ env: d.environment, creator: d.creator?.login })));
+      
+      if (Array.isArray(deployments) && deployments.length > 0) {
+        // Find Vercel deployments - look for Preview environments or Vercel-created ones
+        const vercelDeployment = deployments.find(
+          (d: { environment?: string; creator?: { login?: string } }) =>
+            d.environment?.toLowerCase().includes('preview') ||
+            d.creator?.login === 'vercel[bot]'
+        ) || deployments[0];
+
+        console.log('[Preview] Selected deployment:', vercelDeployment.id, vercelDeployment.environment);
+
+        // Get the deployment's statuses to find the environment_url
+        const statusesRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/deployments/${vercelDeployment.id}/statuses`,
+          {
+            headers: { Accept: 'application/vnd.github.v3+json' },
+          }
+        );
+
+        if (statusesRes.ok) {
+          const statuses = await statusesRes.json();
+          console.log('[Preview] Deployment statuses:', statuses.map((s: { state: string; environment_url?: string }) => ({ state: s.state, url: s.environment_url })));
+          
+          if (Array.isArray(statuses)) {
+            // Find success status with environment_url (or any status with a URL)
+            const statusWithUrl = statuses.find(
+              (s: { state: string; environment_url?: string }) =>
+                s.environment_url && (s.state === 'success' || s.state === 'active')
+            );
+            if (statusWithUrl?.environment_url) {
+              console.log('[Preview] Found URL via deployments API:', statusWithUrl.environment_url);
+              return statusWithUrl.environment_url;
+            }
+          }
+        }
+      }
+    }
+
+    // Approach 2: Try commit statuses API (Vercel also posts status checks here)
+    console.log('[Preview] Trying commit statuses API...');
+    const statusesRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/statuses`,
+      {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+      }
+    );
+
+    if (statusesRes.ok) {
+      const statuses = await statusesRes.json();
+      console.log('[Preview] Commit statuses:', statuses.map((s: { context?: string; state?: string; target_url?: string }) => ({ context: s.context, state: s.state, url: s.target_url })));
+      
+      if (Array.isArray(statuses)) {
+        // Look for Vercel status with a target_url
+        const vercelStatus = statuses.find(
+          (s: { context?: string; target_url?: string; state?: string }) =>
+            s.context?.toLowerCase().includes('vercel') &&
+            s.target_url &&
+            s.state === 'success'
+        );
+        if (vercelStatus?.target_url) {
+          console.log('[Preview] Found URL via commit statuses:', vercelStatus.target_url);
+          return vercelStatus.target_url;
+        }
+      }
+    }
+
+    // Approach 3: Try combined status (check runs) API
+    console.log('[Preview] Trying check runs API...');
+    const checkRunsRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/check-runs`,
+      {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+      }
+    );
+
+    if (checkRunsRes.ok) {
+      const checkRunsData = await checkRunsRes.json();
+      console.log('[Preview] Check runs:', checkRunsData.check_runs?.map((c: { name?: string; app?: { slug?: string }; conclusion?: string; details_url?: string }) => ({ name: c.name, app: c.app?.slug, conclusion: c.conclusion, url: c.details_url })));
+      
+      if (checkRunsData.check_runs && Array.isArray(checkRunsData.check_runs)) {
+        // Look for Vercel check run with details_url
+        const vercelCheck = checkRunsData.check_runs.find(
+          (c: { name?: string; app?: { slug?: string }; details_url?: string; conclusion?: string }) =>
+            (c.name?.toLowerCase().includes('vercel') || c.app?.slug === 'vercel') &&
+            c.details_url &&
+            c.conclusion === 'success'
+        );
+        if (vercelCheck?.details_url) {
+          console.log('[Preview] Found URL via check runs:', vercelCheck.details_url);
+          return vercelCheck.details_url;
+        }
+      }
+    }
+
+    console.log('[Preview] No preview URL found via any method');
+    return null;
+  } catch (err) {
+    console.error('[Preview] Error fetching preview URL:', err);
+    return null;
+  }
+}
+
 // Re-export shared types so existing imports continue working
 export * from './cursorTypes';

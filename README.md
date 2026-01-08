@@ -26,3 +26,9 @@ A web interface for launching and managing Cursor Cloud Agents.
 ## Getting an API Key
 
 Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your key is stored locally in your browser and never sent to any server other than Cursor's API.
+
+## Environment Variables (Optional)
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_VERCEL_PROTECTION_BYPASS_SECRET` | Bypass secret for protected Vercel preview deployments. Get it from Vercel Dashboard → Settings → Deployment Protection → Protection Bypass for Automation. |

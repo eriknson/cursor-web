@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
-import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, AuthError, RateLimitError, NotFoundError } from '@/lib/cursorClient';
+import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCommitsUrl, parseRepository, fetchVercelPreviewUrl, AuthError, RateLimitError, NotFoundError } from '@/lib/cursorClient';
 import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
 import { useTypewriter } from '@/components/TypewriterText';
@@ -161,14 +161,17 @@ interface ConversationViewProps {
   pendingFollowUp?: string;
   // Callback when pending follow-up has been confirmed in the conversation
   onFollowUpConfirmed?: () => void;
+  // Summary from before the pending follow-up (passed from parent for reliable timing)
+  frozenSummary?: string;
 }
 
-const INITIAL_POLL_INTERVAL = 1000;
-const NORMAL_POLL_INTERVAL = 2000;
-const BACKOFF_POLL_INTERVAL = 5000;
-// Fetch conversation every 3rd poll (~3 seconds) to avoid rate limiting
-// Status is still polled every 1-2 seconds for responsive UI
-const CONVERSATION_POLL_FREQUENCY = 3;
+const INITIAL_POLL_INTERVAL = 800;
+const NORMAL_POLL_INTERVAL = 1500;
+const BACKOFF_POLL_INTERVAL = 3000;
+// Fetch conversation every 2nd poll (~3 seconds) for more responsive updates
+const CONVERSATION_POLL_FREQUENCY = 2;
+// Watchdog timeout - if no poll happens within this time, force restart polling
+const POLLING_WATCHDOG_MS = 10000;
 
 // Normalize text whitespace - collapse multiple newlines into single
 function normalizeText(text: string): string {
@@ -250,7 +253,16 @@ function AgentResponseText({
   );
 }
 
-// Cloud Agent View
+// Extended message type that includes historical summaries
+interface DisplayItem {
+  id: string;
+  type: 'user_message' | 'assistant_message' | 'summary' | 'commit';
+  text: string;
+  agent?: Agent; // For commit items
+  isPending?: boolean;
+}
+
+// Cloud Agent View - chronological conversation with inline summaries
 function CloudAgentView({
   agent,
   messages,
@@ -259,7 +271,7 @@ function CloudAgentView({
   isPending,
   initialPrompt,
   pendingFollowUp,
-  summaryStale,
+  historicalSummary,
 }: {
   agent: Agent | null;
   messages: Message[];
@@ -268,44 +280,97 @@ function CloudAgentView({
   isPending?: boolean;
   initialPrompt: string;
   pendingFollowUp?: string;
-  summaryStale?: boolean;
+  // Summary that was shown before the current follow-up (frozen in history)
+  historicalSummary?: string;
 }) {
-  // Skip user messages that are either:
-  // 1. The first message matching our initial prompt (already shown above)
-  // 2. Messages that match the agent's auto-generated name/title (not user-written)
-  const displayMessages = messages.filter((msg, idx) => {
-    if (msg.type === 'user_message') {
-      // Skip if it matches the initial prompt (already displayed above)
-      if (msg.text === initialPrompt) {
-        return false;
+  // Build a chronological display list with summaries at correct positions
+  const displayItems = useMemo(() => {
+    const items: DisplayItem[] = [];
+    
+    // Filter messages as before
+    const filteredMessages = messages.filter((msg) => {
+      if (msg.type === 'user_message') {
+        if (msg.text === initialPrompt) return false;
+        if (agent?.name && msg.text === agent.name) return false;
       }
-      // Skip if it matches the agent's auto-generated title/name
-      if (agent?.name && msg.text === agent.name) {
-        return false;
+      return true;
+    });
+    
+    // Find the index of the first user message that came after agent responses
+    // This is where we should insert the historical summary
+    let followUpIndex = -1;
+    let hasSeenAgentMessage = false;
+    
+    for (let i = 0; i < filteredMessages.length; i++) {
+      const msg = filteredMessages[i];
+      if (msg.type === 'assistant_message') {
+        hasSeenAgentMessage = true;
+      } else if (msg.type === 'user_message' && hasSeenAgentMessage) {
+        followUpIndex = i;
+        break;
       }
     }
-    return true;
-  });
+    
+    // Build the display list with historical summary at the right position
+    for (let i = 0; i < filteredMessages.length; i++) {
+      const msg = filteredMessages[i];
+      
+      // Insert historical summary before the follow-up user message
+      if (historicalSummary && i === followUpIndex) {
+        items.push({
+          id: 'historical-summary',
+          type: 'summary',
+          text: historicalSummary,
+        });
+      }
+      
+      items.push({
+        id: msg.id,
+        type: msg.type,
+        text: msg.text,
+      });
+    }
+    
+    // If no follow-up was found but we have historical summary, append it after all messages
+    if (historicalSummary && followUpIndex === -1) {
+      items.push({
+        id: 'historical-summary',
+        type: 'summary',
+        text: historicalSummary,
+      });
+    }
+    
+    // Add pending follow-up if not already in messages
+    if (pendingFollowUp) {
+      const pendingAlreadyInMessages = filteredMessages.some(
+        msg => msg.type === 'user_message' && msg.text === pendingFollowUp
+      );
+      if (!pendingAlreadyInMessages) {
+        // If we have historical summary and no follow-up was found yet, add summary first
+        if (historicalSummary && followUpIndex === -1 && !items.some(i => i.type === 'summary')) {
+          items.push({
+            id: 'historical-summary',
+            type: 'summary',
+            text: historicalSummary,
+          });
+        }
+        items.push({
+          id: 'pending-followup',
+          type: 'user_message',
+          text: pendingFollowUp,
+          isPending: true,
+        });
+      }
+    }
+    
+    return items;
+  }, [messages, initialPrompt, agent?.name, historicalSummary, pendingFollowUp]);
   
-  // Check if pending follow-up is already in the messages (to avoid duplicate display)
-  const pendingAlreadyInMessages = pendingFollowUp && displayMessages.some(
-    msg => msg.type === 'user_message' && msg.text === pendingFollowUp
-  );
+  const agentMessages = displayItems.filter(m => m.type === 'assistant_message');
+  const lastItem = displayItems[displayItems.length - 1];
   
-  // If we have a pending follow-up that's not yet in messages, add it for display
-  const messagesWithPending = pendingFollowUp && !pendingAlreadyInMessages
-    ? [...displayMessages, { 
-        id: 'pending-followup', 
-        type: 'user_message' as const, 
-        text: pendingFollowUp,
-        isPending: true 
-      }]
-    : displayMessages;
-  
-  const agentMessages = messagesWithPending.filter(m => m.type === 'assistant_message');
-  const lastMessage = messagesWithPending[messagesWithPending.length - 1];
-  // Waiting for response if we have a pending follow-up or if last message is user message
-  const isWaitingForResponse = isActive && (lastMessage?.type === 'user_message' || !!pendingFollowUp);
+  // Waiting for response if last item is user message or we have a pending follow-up
+  const isWaitingForResponse = isActive && (lastItem?.type === 'user_message' || !!pendingFollowUp);
   
   // Get initial loading phase message (before any real messages arrive)
   const hasAnyAgentContent = agentMessages.length > 0 || !!agent?.name;
@@ -319,9 +384,6 @@ function CloudAgentView({
     ? initialPhaseMessage 
     : realStatusMessage;
 
-  // Note: Scrolling is handled by parent ConversationView component
-  // This effect removed to avoid conflicts with main scroll logic
-
   // Show thinking when: pending, no agent messages yet, or waiting for response to follow-up
   const showThinking = isPending || (isActive && agentMessages.length === 0) || isWaitingForResponse;
   
@@ -331,21 +393,24 @@ function CloudAgentView({
   
   // Always show shimmer on something when active - either the message or thinking text
   const needsShimmerIndicator = isActive && !showThinking && latestAgentMessage;
+  
+  // Show current summary only if:
+  // 1. Agent is terminal (not active)
+  // 2. Has a summary
+  // 3. Summary is different from historical (or no historical)
+  const showCurrentSummary = !isActive && agent?.summary && agent.summary !== historicalSummary;
 
   return (
     <div>
-      {/* Conversation thread - shows both user follow-ups and agent responses */}
-      {messagesWithPending.map((msg, idx) => {
-        const isLatestAgent = msg.type === 'assistant_message' && 
-          messagesWithPending.filter(m => m.type === 'assistant_message').pop()?.id === msg.id;
-        const isActiveMessage = isLatestAgent && isActive && !isWaitingForResponse;
-        // Consistent spacing between all message bubbles
+      {/* Conversation thread - shows messages, summaries, and follow-ups in chronological order */}
+      {displayItems.map((item, idx) => {
+        const prevItem = displayItems[idx - 1];
         const spacingClass = 'pt-3';
 
-        if (msg.type === 'user_message') {
-          // User follow-up message - bubble style
+        // User message
+        if (item.type === 'user_message') {
           return (
-            <div key={msg.id} className={`flex justify-end ${spacingClass}`}>
+            <div key={item.id} className={`flex justify-end ${spacingClass}`}>
               <div 
                 className="max-w-[85%] px-4 py-2.5 rounded-2xl"
                 style={{ background: theme.bg.tertiary }}
@@ -354,35 +419,53 @@ function CloudAgentView({
                   className="text-[14px] leading-relaxed"
                   style={{ color: theme.text.primary }}
                 >
-                  {msg.text}
+                  {item.text}
                 </p>
               </div>
             </div>
           );
         }
 
-        // Agent message - flows together with comfortable spacing, monospace font with typewriter
-        // Only show avatar on first message in a sequence of agent messages
-        const prevMsg = messagesWithPending[idx - 1];
-        const isFirstInSequence = prevMsg?.type !== 'assistant_message';
+        // Historical summary (frozen in conversation history)
+        if (item.type === 'summary') {
+          const isFirstInSequence = prevItem?.type !== 'assistant_message' && prevItem?.type !== 'summary';
+          return (
+            <div key={item.id}>
+              {isFirstInSequence && <CursorAvatarHeader />}
+              <div className={`flex items-start sm:gap-2.5 ${isFirstInSequence ? 'pt-1.5 sm:pt-3' : spacingClass}`}>
+                <div className="hidden sm:block">
+                  {isFirstInSequence ? <CursorAvatar /> : <div className="w-6 flex-shrink-0" />}
+                </div>
+                <div 
+                  className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                  style={{ background: theme.bg.quaternary }}
+                >
+                  <div 
+                    className="text-[13px] leading-[1.7]"
+                    style={{ color: theme.text.tertiary }}
+                  >
+                    {renderWithCodeTags(item.text)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Agent message
+        const isLatestAgent = item.type === 'assistant_message' && 
+          displayItems.filter(m => m.type === 'assistant_message').pop()?.id === item.id;
+        const isActiveMessage = isLatestAgent && isActive && !isWaitingForResponse;
+        const isFirstInSequence = prevItem?.type !== 'assistant_message';
         
         return (
-          <div key={msg.id}>
-            {/* Mobile: Show avatar header above first message in sequence */}
+          <div key={item.id}>
             {isFirstInSequence && <CursorAvatarHeader />}
-            
-            {/* Message row - responsive layout */}
             <div 
               className={`flex items-start sm:gap-2.5 ${isFirstInSequence ? 'pt-1.5 sm:pt-3' : spacingClass}`}
             >
-              {/* Desktop only: Avatar to the left */}
               <div className="hidden sm:block">
-                {isFirstInSequence ? (
-                  <CursorAvatar />
-                ) : (
-                  // Spacer to maintain alignment when avatar is hidden
-                  <div className="w-6 flex-shrink-0" />
-                )}
+                {isFirstInSequence ? <CursorAvatar /> : <div className="w-6 flex-shrink-0" />}
               </div>
               <div 
                 className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
@@ -390,12 +473,10 @@ function CloudAgentView({
               >
                 <div 
                   className="text-[13px] leading-[1.7] whitespace-pre-wrap transition-colors"
-                  style={{ 
-                    color: isActiveMessage ? theme.text.primary : theme.text.secondary 
-                  }}
+                  style={{ color: isActiveMessage ? theme.text.primary : theme.text.secondary }}
                 >
                   <AgentResponseText 
-                    text={msg.text} 
+                    text={item.text} 
                     isActive={isActiveMessage}
                     skipAnimation={!isActiveMessage}
                   />
@@ -406,21 +487,13 @@ function CloudAgentView({
         );
       })}
 
-      {/* Status indicator - shows REAL agent status/name */}
-      {/* Hide avatar if continuing after agent messages */}
+      {/* Thinking indicator */}
       {showThinking && (
         <div>
-          {/* Mobile: Show avatar header if no messages yet */}
           {agentMessages.length === 0 && <CursorAvatarHeader />}
-          
           <div className={`flex items-start sm:gap-2.5 ${agentMessages.length === 0 ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
-            {/* Desktop only: Avatar or spacer */}
             <div className="hidden sm:block">
-              {agentMessages.length === 0 ? (
-                <CursorAvatar />
-              ) : (
-                <div className="w-6 flex-shrink-0" />
-              )}
+              {agentMessages.length === 0 ? <CursorAvatar /> : <div className="w-6 flex-shrink-0" />}
             </div>
             <div 
               className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
@@ -434,10 +507,9 @@ function CloudAgentView({
         </div>
       )}
       
-      {/* Active indicator when we have messages but still working */}
+      {/* Active working indicator */}
       {needsShimmerIndicator && (
         <div className="flex items-start sm:gap-2.5 pt-3">
-          {/* Desktop only: Spacer */}
           <div className="hidden sm:block w-6 flex-shrink-0" />
           <div 
             className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
@@ -450,21 +522,11 @@ function CloudAgentView({
         </div>
       )}
 
-      {/* Summary - only show when finished and not stale */}
-      {agent?.summary && !isActive && !summaryStale && (
+      {/* Current summary - only shown when terminal and different from historical */}
+      {showCurrentSummary && (
         <div>
-          {/* Mobile: Show avatar header if no messages */}
-          {agentMessages.length === 0 && <CursorAvatarHeader />}
-          
-          <div className={`flex items-start sm:gap-2.5 ${agentMessages.length === 0 ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
-            {/* Desktop only: Avatar or spacer */}
-            <div className="hidden sm:block">
-              {agentMessages.length === 0 ? (
-                <CursorAvatar />
-              ) : (
-                <div className="w-6 flex-shrink-0" />
-              )}
-            </div>
+          <div className="flex items-start sm:gap-2.5 pt-3">
+            <div className="hidden sm:block w-6 flex-shrink-0" />
             <div 
               className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
               style={{ background: theme.bg.quaternary }}
@@ -473,16 +535,15 @@ function CloudAgentView({
                 className="text-[13px] leading-[1.7]"
                 style={{ color: theme.text.primary }}
               >
-                {renderWithCodeTags(agent.summary)}
+                {renderWithCodeTags(agent.summary!)}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Commit confirmation - show after summary when finished successfully */}
-      {/* Only show when we have the summary to ensure correct visual order */}
-      {agent && agent.status === 'FINISHED' && !isActive && agent.summary && !summaryStale && (
+      {/* Commit confirmation */}
+      {agent && agent.status === 'FINISHED' && !isActive && showCurrentSummary && (
         <CommitConfirmation agent={agent} />
       )}
     </div>
@@ -519,11 +580,29 @@ function extractRepoName(repo: string): string {
 
 // Commit confirmation component - subtle design with GitHub merge icon
 function CommitConfirmation({ agent }: { agent: Agent }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  // Fetch Vercel preview URL when component mounts
+  useEffect(() => {
+    const parsed = parseRepository(agent.source.repository);
+    if (!parsed) {
+      console.log('[Preview] Could not parse repository:', agent.source.repository);
+      return;
+    }
+    
+    console.log('[Preview] Fetching preview URL for:', parsed.owner, parsed.repo, agent.target.branchName);
+    
+    fetchVercelPreviewUrl(parsed.owner, parsed.repo, agent.target.branchName)
+      .then(url => {
+        console.log('[Preview] Result:', url);
+        if (url) setPreviewUrl(url);
+      });
+  }, [agent.source.repository, agent.target.branchName]);
+  
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
   const timeAgo = agent.createdAt ? formatTimeAgo(agent.createdAt) : '';
   const repoName = extractRepoName(agent.source.repository);
-  const branchName = agent.target.branchName;
   
   // Format status message - just owner/repo
   const statusMessage = `Committed to ${repoName} ${timeAgo}`;
@@ -541,49 +620,99 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
   }
   
   return (
-    <div className="pt-1 flex items-center gap-1.5 sm:pl-[34px]">
-      {/* Checkmark icon - inherits text color */}
-      <svg 
-        width="12" 
-        height="12" 
-        viewBox="0 0 16 16" 
-        fill="none" 
-        xmlns="http://www.w3.org/2000/svg"
-        className="flex-shrink-0"
-        style={{ color: theme.text.tertiary }}
-      >
-        <path
-          d="M13.25 4.75 6.5 11.5 3 8"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      
-      {/* Status message - subtle and clickable */}
-      {linkUrl ? (
-        <a
-          href={linkUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs transition-colors hover:opacity-80"
+    <div className="space-y-1">
+      <div className="pt-1 flex items-center gap-1.5 sm:pl-[34px]">
+        {/* Checkmark icon - inherits text color */}
+        <svg 
+          width="12" 
+          height="12" 
+          viewBox="0 0 16 16" 
+          fill="none" 
+          xmlns="http://www.w3.org/2000/svg"
+          className="flex-shrink-0"
           style={{ color: theme.text.tertiary }}
-          onClick={() => trackGitHubLinkClick(linkUrl)}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = theme.text.secondary;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = theme.text.tertiary;
-          }}
         >
-          {statusMessage}
-        </a>
-      ) : (
-        <span className="text-xs" style={{ color: theme.text.tertiary }}>
-          {statusMessage}
-        </span>
-      )}
+          <path
+            d="M13.25 4.75 6.5 11.5 3 8"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        
+        {/* Status message - subtle and clickable */}
+        {linkUrl ? (
+          <a
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs transition-colors hover:opacity-80"
+            style={{ color: theme.text.tertiary }}
+            onClick={() => trackGitHubLinkClick(linkUrl)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = theme.text.secondary;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = theme.text.tertiary;
+            }}
+          >
+            {statusMessage}
+          </a>
+        ) : (
+          <span className="text-xs" style={{ color: theme.text.tertiary }}>
+            {statusMessage}
+          </span>
+        )}
+      </div>
+      
+      {/* Preview deployment link */}
+      {previewUrl && (() => {
+        // Add Vercel protection bypass secret if configured
+        const bypassSecret = process.env.NEXT_PUBLIC_VERCEL_PROTECTION_BYPASS_SECRET;
+        const finalPreviewUrl = bypassSecret
+          ? `${previewUrl}${previewUrl.includes('?') ? '&' : '?'}x-vercel-protection-bypass=${bypassSecret}`
+          : previewUrl;
+        
+        return (
+          <div className="flex items-center gap-1.5 sm:pl-[34px]">
+            {/* External link icon */}
+            <svg 
+              width="12" 
+              height="12" 
+              viewBox="0 0 16 16" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+              className="flex-shrink-0"
+              style={{ color: theme.text.tertiary }}
+            >
+              <path
+                d="M6.5 3.5H3.5C3.23478 3.5 2.98043 3.60536 2.79289 3.79289C2.60536 3.98043 2.5 4.23478 2.5 4.5V12.5C2.5 12.7652 2.60536 13.0196 2.79289 13.2071C2.98043 13.3946 3.23478 13.5 3.5 13.5H11.5C11.7652 13.5 12.0196 13.3946 12.2071 13.2071C12.3946 13.0196 12.5 12.7652 12.5 12.5V9.5M9.5 2.5H13.5M13.5 2.5V6.5M13.5 2.5L7 9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            
+            <a
+              href={finalPreviewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs transition-colors hover:opacity-80"
+              style={{ color: theme.text.tertiary }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = theme.text.secondary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = theme.text.tertiary;
+              }}
+            >
+              Preview deployment
+            </a>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -601,6 +730,7 @@ export function ConversationView({
   initialStatus,
   pendingFollowUp,
   onFollowUpConfirmed,
+  frozenSummary,
 }: ConversationViewProps) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -616,11 +746,28 @@ export function ConversationView({
   
   const pollCountRef = useRef(0);
   const rateLimitedRef = useRef(false);
-  const conversationRateLimitedUntilRef = useRef(0); // Timestamp when to retry conversation
+  const lastSuccessfulPollRef = useRef<number>(Date.now()); // Watchdog tracking
   
-  // Track when a restart happened so we can clear stale summaries
+  // Track when a restart happened so we can preserve historical summaries
   const lastRefreshTriggerRef = useRef(refreshTrigger);
-  const [summaryStale, setSummaryStale] = useState(false);
+  
+  // Historical summary - snapshot of summary when follow-up was sent
+  // This gets frozen in the conversation history so follow-ups appear after it
+  const [historicalSummary, setHistoricalSummary] = useState<string | null>(null);
+  
+  // Keep a ref of the last known summary so we can capture it reliably
+  // This updates synchronously on every render, so it's always current
+  const lastKnownSummaryRef = useRef<string | null>(null);
+  if (agent?.summary) {
+    lastKnownSummaryRef.current = agent.summary;
+  }
+  // Also capture from preloaded data
+  if (preloadedData?.agent?.summary && !lastKnownSummaryRef.current) {
+    lastKnownSummaryRef.current = preloadedData.agent.summary;
+  }
+  
+  // Track recent refresh to prevent premature polling stop after follow-up
+  const recentRefreshRef = useRef(false);
   
   // Stable refs for callbacks to avoid polling instability when parent re-renders
   const onStatusChangeRef = useRef(onStatusChange);
@@ -636,13 +783,47 @@ export function ConversationView({
     onFollowUpConfirmedRef.current = onFollowUpConfirmed;
   }, [onStatusChange, onAgentUpdate, onAuthFailure, onFollowUpConfirmed]);
   
-  // When refreshTrigger changes (follow-up to finished agent), mark summary as stale
+  // Track previous pendingFollowUp to detect when a new one arrives
+  const prevPendingFollowUpRef = useRef<string | undefined>(undefined);
+  
+  // Capture historical summary when a pending follow-up first appears
+  // Priority: frozenSummary prop > current agent.summary > lastKnownSummaryRef
+  useEffect(() => {
+    const hadNoPending = !prevPendingFollowUpRef.current;
+    const hasNewPending = !!pendingFollowUp;
+    
+    // When pendingFollowUp transitions from nothing to something
+    if (hadNoPending && hasNewPending && !historicalSummary) {
+      // Use frozenSummary prop first (most reliable), then local sources
+      const summaryToCapture = frozenSummary || agent?.summary || lastKnownSummaryRef.current;
+      if (summaryToCapture) {
+        setHistoricalSummary(summaryToCapture);
+      }
+    }
+    
+    prevPendingFollowUpRef.current = pendingFollowUp;
+  }, [pendingFollowUp, frozenSummary, agent?.summary, historicalSummary]);
+  
+  // Also set historical summary directly from prop if provided
+  useEffect(() => {
+    if (frozenSummary && !historicalSummary) {
+      setHistoricalSummary(frozenSummary);
+    }
+  }, [frozenSummary, historicalSummary]);
+  
+  // Also capture on refreshTrigger as a backup (for cases where pendingFollowUp timing differs)
   useEffect(() => {
     if (refreshTrigger > lastRefreshTriggerRef.current) {
-      setSummaryStale(true);
+      // Capture the current summary if we haven't already
+      if (!historicalSummary) {
+        const summaryToCapture = frozenSummary || agent?.summary || lastKnownSummaryRef.current;
+        if (summaryToCapture) {
+          setHistoricalSummary(summaryToCapture);
+        }
+      }
       lastRefreshTriggerRef.current = refreshTrigger;
     }
-  }, [refreshTrigger]);
+  }, [refreshTrigger, frozenSummary, agent?.summary, historicalSummary]);
   
   // Detect when pending follow-up appears in the actual messages and notify parent
   useEffect(() => {
@@ -657,15 +838,10 @@ export function ConversationView({
     }
   }, [pendingFollowUp, messages]);
   
-  // Clear stale summary flag when we get a fresh agent with updated summary
-  // We detect this when the summary changes after being marked stale
-  const prevSummaryRef = useRef(agent?.summary);
+  // Clear historical summary when agent changes (new conversation)
   useEffect(() => {
-    if (summaryStale && agent?.summary && agent.summary !== prevSummaryRef.current) {
-      setSummaryStale(false);
-    }
-    prevSummaryRef.current = agent?.summary;
-  }, [agent?.summary, summaryStale]);
+    setHistoricalSummary(null);
+  }, [agentId]);
   
   // Handle "pending" state - when user just submitted but we don't have an agent ID yet
   const isPending = agentId === 'pending';
@@ -700,114 +876,113 @@ export function ConversationView({
   }, []);
 
   const fetchAll = useCallback(async (isInitial = false, forceConversation = false): Promise<boolean> => {
-    if (!agentId || !apiKey) return false;
-    if (fetchInFlightRef.current) return false;
+    if (!agentId || !apiKey || agentId === 'pending') return false;
+    
+    // Prevent concurrent fetches, but with a safety timeout to avoid getting stuck
+    if (fetchInFlightRef.current) {
+      return false;
+    }
     
     fetchInFlightRef.current = true;
-    const release = () => { fetchInFlightRef.current = false; };
-    
     let gotData = false;
     let agentStatusAfterFetch: string | undefined;
     
-    // Always fetch agent status
     try {
-      const status = await getAgentStatus(apiKey, agentId);
-      setAgent(status);
-      latestAgentRef.current = status;
-      agentStatusAfterFetch = status.status;
-      setError(null);
-      onStatusChangeRef.current?.(status.status);
-      if (agentId) {
-        onAgentUpdateRef.current?.(agentId, { status: status.status, name: status.name });
-      }
-      gotData = true;
-      rateLimitedRef.current = false;
-    } catch (err) {
-      if (err instanceof AuthError) {
-        onAuthFailureRef.current?.();
-        setError('Authentication failed');
-        toast.error('Session expired. Please re-enter your API key.');
-        release();
-        return false;
-      }
-      if (err instanceof RateLimitError) {
-        rateLimitedRef.current = true;
-        toast.warning('Rate limited - slowing down requests');
-      } else if (isInitial) {
-        setError('Failed to load agent');
-        toast.error('Failed to load agent data');
-      }
-    }
-
-    // Only fetch conversation on initial load, forced, every N polls, or when agent is terminal
-    // When agent is terminal, always fetch to ensure we get all final messages
-    // Also respect rate limit backoff - but BYPASS it for forced fetches (critical for terminal state)
-    const isConversationRateLimited = Date.now() < conversationRateLimitedUntilRef.current;
-    const agentIsTerminal = agentStatusAfterFetch === 'FINISHED' || 
-                            agentStatusAfterFetch === 'ERROR' || 
-                            agentStatusAfterFetch === 'STOPPED' ||
-                            agentStatusAfterFetch === 'EXPIRED';
-    // forceConversation bypasses rate limit - used when we MUST get final messages
-    const shouldFetchConversation = forceConversation || (
-      !isConversationRateLimited && (
-        isInitial || agentIsTerminal ||
-        (pollCountRef.current % CONVERSATION_POLL_FREQUENCY === 0)
-      )
-    );
-    
-    if (shouldFetchConversation) {
+      // Always fetch agent status
       try {
-        const conv = await getAgentConversation(apiKey, agentId);
-        const fetchedMessages = conv.messages || [];
-        
-        // Accumulate messages - never lose messages we've already seen
-        // This prevents flickering when API returns incomplete data temporarily
-        setMessages(prevMessages => {
-          // If API returns at least as many messages as we have, use API order
-          // (it's authoritative and in correct chronological order)
-          if (fetchedMessages.length >= prevMessages.length) {
-            messageIdsRef.current = new Set(fetchedMessages.map(m => m.id));
-            return fetchedMessages;
-          }
-          
-          // API returned fewer messages (temporary incomplete response)
-          // Keep our existing messages and only add truly new ones
-          const existingIds = new Set(prevMessages.map(m => m.id));
-          const newMessages = fetchedMessages.filter(m => !existingIds.has(m.id));
-          
-          if (newMessages.length === 0) {
-            // No new messages, keep what we have
-            return prevMessages;
-          }
-          
-          // Append new messages to the end
-          const merged = [...prevMessages, ...newMessages];
-          messageIdsRef.current = new Set(merged.map(m => m.id));
-          return merged;
-        });
-        
+        const status = await getAgentStatus(apiKey, agentId);
+        setAgent(status);
+        latestAgentRef.current = status;
+        agentStatusAfterFetch = status.status;
+        setError(null);
+        onStatusChangeRef.current?.(status.status);
+        if (agentId) {
+          onAgentUpdateRef.current?.(agentId, { status: status.status, name: status.name });
+        }
         gotData = true;
-        // Reset rate limit on success
-        conversationRateLimitedUntilRef.current = 0;
+        rateLimitedRef.current = false;
+        lastSuccessfulPollRef.current = Date.now();
       } catch (err) {
         if (err instanceof AuthError) {
           onAuthFailureRef.current?.();
           setError('Authentication failed');
-          release();
-          return gotData;
+          toast.error('Session expired. Please re-enter your API key.');
+          return false;
         }
-        // NotFoundError (409/404) means conversation doesn't exist yet - this is normal for new agents
-        if (err instanceof NotFoundError) {
-          // Silently ignore - conversation will be created when agent starts responding
-          gotData = true; // Consider this successful (just no messages yet)
-        } else if (err instanceof RateLimitError || (err instanceof Error && err.message.includes('429'))) {
-          // Back off for 5 seconds before retrying conversation endpoint
-          conversationRateLimitedUntilRef.current = Date.now() + 5000;
+        if (err instanceof RateLimitError) {
+          rateLimitedRef.current = true;
+          // Don't show toast every time - only on first rate limit
+        } else if (isInitial) {
+          setError('Failed to load agent');
+          toast.error('Failed to load agent data');
+        }
+        // Continue - we might still get conversation data
+      }
+
+      // Determine if we should fetch conversation
+      const agentIsTerminal = agentStatusAfterFetch === 'FINISHED' || 
+                              agentStatusAfterFetch === 'ERROR' || 
+                              agentStatusAfterFetch === 'STOPPED' ||
+                              agentStatusAfterFetch === 'EXPIRED';
+      
+      // Fetch conversation more aggressively - every poll when running, or on specific triggers
+      const shouldFetchConversation = forceConversation || 
+        isInitial || 
+        agentIsTerminal ||
+        (pollCountRef.current % CONVERSATION_POLL_FREQUENCY === 0);
+      
+      if (shouldFetchConversation) {
+        try {
+          const conv = await getAgentConversation(apiKey, agentId);
+          const fetchedMessages = conv.messages || [];
+          
+          // APPEND-ONLY message accumulation - never remove messages we've seen
+          // This ensures the conversation only grows, preventing flicker/stuck states
+          setMessages(prevMessages => {
+            if (prevMessages.length === 0) {
+              // First fetch - just use what we got
+              messageIdsRef.current = new Set(fetchedMessages.map(m => m.id));
+              return fetchedMessages;
+            }
+            
+            // Build a map of existing messages by ID for quick lookup
+            const existingById = new Map(prevMessages.map(m => [m.id, m]));
+            
+            // Find truly new messages (not seen before)
+            const newMessages = fetchedMessages.filter(m => !existingById.has(m.id));
+            
+            if (newMessages.length === 0) {
+              // No new messages - keep existing (don't touch anything)
+              return prevMessages;
+            }
+            
+            // Append new messages to existing ones
+            // This preserves our history and only adds new content
+            const merged = [...prevMessages, ...newMessages];
+            messageIdsRef.current = new Set(merged.map(m => m.id));
+            return merged;
+          });
+          
+          gotData = true;
+          lastSuccessfulPollRef.current = Date.now();
+        } catch (err) {
+          if (err instanceof AuthError) {
+            onAuthFailureRef.current?.();
+            setError('Authentication failed');
+            return gotData;
+          }
+          // NotFoundError (409/404) means conversation doesn't exist yet - this is normal for new agents
+          if (err instanceof NotFoundError) {
+            gotData = true; // Consider this successful (just no messages yet)
+          }
+          // For rate limits, just continue - next poll will try again
         }
       }
+    } finally {
+      // ALWAYS release the lock, even if errors occurred
+      fetchInFlightRef.current = false;
     }
 
-    release();
     return gotData;
   }, [agentId, apiKey]);
 
@@ -818,14 +993,14 @@ export function ConversationView({
     
     if (rateLimitedRef.current) {
       interval = BACKOFF_POLL_INTERVAL;
-    } else if (pollCountRef.current < 20) {
-      // More aggressive polling for first 20 polls (~16-20 seconds)
+    } else if (pollCountRef.current < 30) {
+      // More aggressive polling for first 30 polls (~24 seconds)
       // This covers the typical "thinking" phase before first response
       interval = INITIAL_POLL_INTERVAL;
     }
     
-    // Add jitter to avoid thundering herd
-    const jitter = Math.random() * 200 - 100;
+    // Small jitter to avoid thundering herd (but keep it small for responsiveness)
+    const jitter = Math.random() * 100;
     interval = Math.max(500, interval + jitter);
     
     pollingRef.current = setTimeout(async () => {
@@ -833,7 +1008,13 @@ export function ConversationView({
       if (!agentIdToCheck || agentIdToCheck === 'pending') return;
       
       pollCountRef.current++;
-      await fetchAll();
+      
+      try {
+        await fetchAll();
+      } catch (err) {
+        // Don't let errors break the polling loop
+        console.error('Poll error:', err);
+      }
       
       // Check terminal state using the cached agent from fetchAll
       const currentStatus = latestAgentRef.current?.status;
@@ -844,36 +1025,20 @@ export function ConversationView({
       
       // Only stop polling if we successfully got a terminal status
       if (terminal) {
-        // When agent finishes, ensure we fetch conversation to get all final messages
-        // The conversation might not have been fetched in the last poll cycle
-        const previousMessageCount = messageIdsRef.current.size;
-        
-        // Give server a moment to finalize, then fetch final state
-        // Use a longer delay to ensure server has time to commit final messages
-        await new Promise(r => setTimeout(r, 800));
-        await fetchAll(false, true);
-        
-        // Check if we got new messages - if so, wait a bit more and fetch again
-        const messageCountAfterFirstFetch = messageIdsRef.current.size;
-        const gotNewMessages = messageCountAfterFirstFetch > previousMessageCount;
-        
-        if (gotNewMessages) {
-          // If we got new messages, wait a bit more and fetch again to catch any remaining
-          await new Promise(r => setTimeout(r, 1200));
-          await fetchAll(false, true);
+        // When agent finishes, do a few more fetches to get final messages/summary
+        // Spread out over time to catch delayed updates
+        const finalFetches = [500, 1500, 3000];
+        for (const delay of finalFetches) {
+          setTimeout(async () => {
+            if (currentAgentIdRef.current === agentIdToCheck) {
+              try {
+                await fetchAll(false, true);
+              } catch {
+                // Ignore errors on final fetches
+              }
+            }
+          }, delay);
         }
-        
-        // Always do one more fetch after a short delay to ensure we have all messages
-        // This catches edge cases where messages are still being finalized
-        await new Promise(r => setTimeout(r, 1000));
-        await fetchAll(false, true);
-        
-        // Do one final fetch after a bit longer to catch any delayed updates like summary
-        setTimeout(async () => {
-          if (currentAgentIdRef.current === agentIdToCheck) {
-            await fetchAll(false, true);
-          }
-        }, 2500);
         return;
       }
       
@@ -883,6 +1048,30 @@ export function ConversationView({
       }
     }, interval);
   }, [fetchAll]);
+  
+  // Watchdog: ensure polling hasn't silently stopped for active agents
+  useEffect(() => {
+    if (!agentId || agentId === 'pending') return;
+    
+    const watchdog = setInterval(() => {
+      const currentStatus = latestAgentRef.current?.status;
+      const isActiveAgent = currentStatus === 'RUNNING' || currentStatus === 'CREATING';
+      
+      // If agent is active and we haven't had a successful poll in too long, restart polling
+      if (isActiveAgent && currentAgentIdRef.current === agentId) {
+        const timeSinceLastPoll = Date.now() - lastSuccessfulPollRef.current;
+        if (timeSinceLastPoll > POLLING_WATCHDOG_MS) {
+          console.warn('Polling watchdog triggered - restarting polling');
+          lastSuccessfulPollRef.current = Date.now();
+          fetchAll(false, true).then(() => {
+            scheduleNextPoll();
+          });
+        }
+      }
+    }, POLLING_WATCHDOG_MS / 2);
+    
+    return () => clearInterval(watchdog);
+  }, [agentId, fetchAll, scheduleNextPoll]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -954,61 +1143,43 @@ export function ConversationView({
     return stopPolling;
   }, [agentId, fetchAll, scheduleNextPoll, stopPolling, preloadedData]);
 
-  // Track whether we've completed post-terminal polling for summary
-  const postTerminalPollDoneRef = useRef(false);
-  
+  // When agent becomes terminal, stop regular polling
+  // (Final fetches for summary are handled in scheduleNextPoll)
+  // But don't stop if we just had a refresh (follow-up) - give it time to transition back to RUNNING
   useEffect(() => {
-    if (isTerminal && agentId && agentId !== 'pending') {
+    if (isTerminal && agentId && agentId !== 'pending' && !recentRefreshRef.current) {
       stopPolling();
-      
-      // Skip if we've already done post-terminal polling for this agent
-      if (postTerminalPollDoneRef.current) {
-        return;
-      }
-      
-      // Poll a few more times to catch the summary which may not be immediately available
-      let attempts = 0;
-      const maxAttempts = 5;
-      const pollInterval = 2000;
-      
-      const pollForSummary = async () => {
-        attempts++;
-        await fetchAll(false, true).catch(() => {
-          // Silently ignore errors - we're just trying to get final state
-        });
-        
-        // Keep polling until we have a summary or hit max attempts
-        const currentAgent = latestAgentRef.current;
-        if (attempts < maxAttempts && !currentAgent?.summary && currentAgentIdRef.current === agentId) {
-          setTimeout(pollForSummary, pollInterval);
-        } else {
-          postTerminalPollDoneRef.current = true;
-        }
-      };
-      
-      // Start polling for summary immediately
-      pollForSummary();
     }
-  }, [isTerminal, stopPolling, agentId, fetchAll]);
-  
-  // Reset post-terminal poll flag when agent changes
-  useEffect(() => {
-    postTerminalPollDoneRef.current = false;
-  }, [agentId]);
+  }, [isTerminal, stopPolling, agentId]);
 
   // Restart polling when refreshTrigger changes (e.g., after follow-up to finished agent)
   useEffect(() => {
     if (refreshTrigger > 0 && agentId && agentId !== 'pending') {
+      // Mark as recently refreshed to prevent premature terminal-state polling stop
+      recentRefreshRef.current = true;
+      
       // Reset rate limit state and restart polling
       pollCountRef.current = 0;
       rateLimitedRef.current = false;
+      lastSuccessfulPollRef.current = Date.now();
+      
       // Fetch immediately then schedule next poll
       fetchAll(false, true).then(() => {
         scheduleNextPoll();
       });
+      
+      // Clear the recent refresh flag after enough time for agent to transition
+      const clearTimer = setTimeout(() => {
+        recentRefreshRef.current = false;
+      }, 5000);
+      
+      return () => clearTimeout(clearTimer);
     }
   }, [refreshTrigger, agentId, fetchAll, scheduleNextPoll]);
 
+  // Track previous message count to detect new messages
+  const prevMessageCountRef = useRef(0);
+  
   // Always open at the bottom for any agent activity/conversation.
   // useLayoutEffect makes this happen before paint once content exists.
   useLayoutEffect(() => {
@@ -1027,6 +1198,17 @@ export function ConversationView({
     const t = setTimeout(scrollToBottom, 0);
     return () => clearTimeout(t);
   }, [agentId, isPending, isLoadingPastAgent, isLoading, messages.length, scrollToBottom]);
+  
+  // Auto-scroll when new messages arrive (for active agents)
+  useEffect(() => {
+    if (messages.length > prevMessageCountRef.current) {
+      // New messages arrived - scroll to bottom with small delay for render
+      const t = setTimeout(scrollToBottom, 50);
+      prevMessageCountRef.current = messages.length;
+      return () => clearTimeout(t);
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length, scrollToBottom]);
 
   if (!agentId) {
     return null;
@@ -1222,7 +1404,7 @@ export function ConversationView({
                     isPending={isPending}
                     initialPrompt={actualUserPrompt}
                     pendingFollowUp={pendingFollowUp}
-                    summaryStale={summaryStale}
+                    historicalSummary={historicalSummary || undefined}
                   />
                 )}
               </div>

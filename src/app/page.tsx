@@ -198,6 +198,9 @@ export default function Home() {
 
   // Pending follow-up message for optimistic UI
   const [pendingFollowUp, setPendingFollowUp] = useState<string | null>(null);
+  
+  // Frozen summary - captured when follow-up is sent to preserve in conversation history
+  const [frozenSummary, setFrozenSummary] = useState<string | null>(null);
 
   // Guard for concurrent run fetches
   const runsFetchInFlight = useRef(false);
@@ -632,6 +635,12 @@ export default function Home() {
       
       // If agent is still running, send a follow-up
       if (isAgentRunning) {
+        // Capture current summary before sending (for historical display)
+        const currentSummary = agentCache[activeAgentId]?.agent?.summary;
+        if (currentSummary) {
+          setFrozenSummary(currentSummary);
+        }
+        
         // Show the message immediately (optimistic UI)
         setPendingFollowUp(prompt);
         trackAgentFollowUp(activeAgentId);
@@ -658,6 +667,12 @@ export default function Home() {
       }
       
       // Agent is finished - try follow-up first, then fall back to launching continuation agent
+      // Capture current summary before sending (for historical display)
+      const currentSummary = agentCache[activeAgentId]?.agent?.summary;
+      if (currentSummary) {
+        setFrozenSummary(currentSummary);
+      }
+      
       // Show the message immediately (optimistic UI)
       setPendingFollowUp(prompt);
       trackAgentFollowUp(activeAgentId);
@@ -808,6 +823,7 @@ export default function Home() {
     setConversationTurns([]);
     setRefreshTrigger(0);
     setPendingFollowUp(null);
+    setFrozenSummary(null);
   };
 
   // Handle going back to home from conversation
@@ -821,6 +837,7 @@ export default function Home() {
     setConversationTurns([]);
     setRefreshTrigger(0);
     setPendingFollowUp(null);
+    setFrozenSummary(null);
   };
 
   // Handle agent data change from conversation view (status, name, etc.)
@@ -1108,6 +1125,7 @@ export default function Home() {
                             initialStatus={activeAgentStatus || undefined}
                             pendingFollowUp={pendingFollowUp || undefined}
                             onFollowUpConfirmed={handleFollowUpConfirmed}
+                            frozenSummary={frozenSummary || undefined}
                           />
             </div>
           </div>
