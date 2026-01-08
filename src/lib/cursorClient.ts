@@ -292,22 +292,6 @@ export function getGitHubCompareUrl(repository: string, baseRef: string, branchN
   return `https://github.com/${parsed.owner}/${parsed.repo}/compare/${baseRef}...${branchName}`;
 }
 
-// Check if a URL is an actual preview deployment URL (not the Vercel dashboard)
-function isPreviewDeploymentUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    // Vercel dashboard URLs are on vercel.com
-    // Actual preview deployments are on *.vercel.app or custom domains
-    if (parsed.hostname === 'vercel.com') {
-      return false;
-    }
-    // Accept .vercel.app domains and any other domain (could be custom)
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // Fetch Vercel preview deployment URL from GitHub APIs
 // Tries multiple approaches since Vercel's integration varies
 export async function fetchVercelPreviewUrl(
@@ -315,123 +299,132 @@ export async function fetchVercelPreviewUrl(
   repo: string,
   branchOrSha: string
 ): Promise<string | null> {
+  // Optional GitHub token for private repos
+  const githubToken = typeof window !== 'undefined' 
+    ? undefined // Client-side: no token available
+    : process.env.GITHUB_TOKEN;
+  
+  const headers: Record<string, string> = { 
+    Accept: 'application/vnd.github.v3+json',
+  };
+  if (githubToken) {
+    headers['Authorization'] = `Bearer ${githubToken}`;
+  }
+
   try {
     // Approach 1: Try GitHub Deployments API (Vercel creates deployments here)
-    // Don't filter by environment name since Vercel uses various formats like "Preview", "Preview – projectname", etc.
+    // The environment_url field contains the actual preview URL
     const deploymentsUrl = `https://api.github.com/repos/${owner}/${repo}/deployments?ref=${encodeURIComponent(branchOrSha)}`;
     console.log('[Preview] Trying deployments API:', deploymentsUrl);
     
-    const deploymentsRes = await fetch(deploymentsUrl, {
-      headers: { Accept: 'application/vnd.github.v3+json' },
-    });
-
+    const deploymentsRes = await fetch(deploymentsUrl, { headers });
     console.log('[Preview] Deployments response status:', deploymentsRes.status);
 
     if (deploymentsRes.ok) {
       const deployments = await deploymentsRes.json();
-      console.log('[Preview] Deployments found:', deployments.length, deployments.map((d: { environment?: string; creator?: { login?: string } }) => ({ env: d.environment, creator: d.creator?.login })));
+      console.log('[Preview] Deployments found:', deployments.length);
       
       if (Array.isArray(deployments) && deployments.length > 0) {
-        // Find Vercel deployments - look for Preview environments or Vercel-created ones
+        // Log all deployments for debugging
+        deployments.forEach((d: { id: string; environment?: string; creator?: { login?: string } }, i: number) => {
+          console.log(`[Preview] Deployment ${i}:`, { id: d.id, env: d.environment, creator: d.creator?.login });
+        });
+        
+        // Find Vercel Preview deployments - prioritize "Preview" environment
         const vercelDeployment = deployments.find(
           (d: { environment?: string; creator?: { login?: string } }) =>
-            d.environment?.toLowerCase().includes('preview') ||
+            d.environment?.toLowerCase().includes('preview')
+        ) || deployments.find(
+          (d: { creator?: { login?: string } }) =>
             d.creator?.login === 'vercel[bot]'
         ) || deployments[0];
 
         console.log('[Preview] Selected deployment:', vercelDeployment.id, vercelDeployment.environment);
 
-        // Get the deployment's statuses to find the environment_url
+        // Get ALL statuses for this deployment
         const statusesRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/deployments/${vercelDeployment.id}/statuses`,
-          {
-            headers: { Accept: 'application/vnd.github.v3+json' },
-          }
+          { headers }
         );
 
         if (statusesRes.ok) {
           const statuses = await statusesRes.json();
-          console.log('[Preview] Deployment statuses:', statuses.map((s: { state: string; environment_url?: string; log_url?: string }) => ({ state: s.state, env_url: s.environment_url, log_url: s.log_url })));
           
-          if (Array.isArray(statuses)) {
-            // Find success status with environment_url (the actual preview app URL)
-            // environment_url is the preview app, log_url is the dashboard
-            const statusWithUrl = statuses.find(
-              (s: { state: string; environment_url?: string }) =>
-                s.environment_url && 
-                (s.state === 'success' || s.state === 'active') &&
-                isPreviewDeploymentUrl(s.environment_url)
-            );
-            if (statusWithUrl?.environment_url) {
-              console.log('[Preview] Found URL via deployments API:', statusWithUrl.environment_url);
-              return statusWithUrl.environment_url;
+          // Log full status objects for debugging
+          if (Array.isArray(statuses) && statuses.length > 0) {
+            console.log('[Preview] All deployment statuses:');
+            statuses.forEach((s: { state: string; environment_url?: string; log_url?: string; target_url?: string }, i: number) => {
+              console.log(`[Preview] Status ${i}:`, {
+                state: s.state,
+                environment_url: s.environment_url,
+                log_url: s.log_url,
+                target_url: s.target_url,
+              });
+            });
+            
+            // Priority 1: Find status with environment_url (the actual preview app)
+            for (const status of statuses) {
+              if (status.environment_url && (status.state === 'success' || status.state === 'active')) {
+                // environment_url should be the actual preview, not the dashboard
+                if (!status.environment_url.includes('vercel.com/')) {
+                  console.log('[Preview] Found preview URL via environment_url:', status.environment_url);
+                  return status.environment_url;
+                }
+              }
+            }
+            
+            // Priority 2: Check if any status has target_url that looks like a preview
+            for (const status of statuses) {
+              if (status.target_url && !status.target_url.includes('vercel.com/')) {
+                console.log('[Preview] Found preview URL via target_url:', status.target_url);
+                return status.target_url;
+              }
+            }
+          }
+        } else {
+          console.log('[Preview] Failed to fetch deployment statuses:', statusesRes.status);
+        }
+      }
+    }
+
+    // Approach 2: Try without ref filter - get recent deployments
+    console.log('[Preview] Trying deployments API without ref filter...');
+    const allDeploymentsRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/deployments?per_page=10`,
+      { headers }
+    );
+
+    if (allDeploymentsRes.ok) {
+      const allDeployments = await allDeploymentsRes.json();
+      console.log('[Preview] Recent deployments:', allDeployments.length);
+      
+      // Find deployment matching our branch in the ref field
+      const matchingDeployment = allDeployments.find(
+        (d: { ref?: string; environment?: string }) =>
+          d.ref === branchOrSha && d.environment?.toLowerCase().includes('preview')
+      );
+      
+      if (matchingDeployment) {
+        console.log('[Preview] Found matching deployment by ref:', matchingDeployment.id);
+        
+        const statusesRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/deployments/${matchingDeployment.id}/statuses`,
+          { headers }
+        );
+
+        if (statusesRes.ok) {
+          const statuses = await statusesRes.json();
+          for (const status of statuses) {
+            if (status.environment_url && !status.environment_url.includes('vercel.com/')) {
+              console.log('[Preview] Found preview URL:', status.environment_url);
+              return status.environment_url;
             }
           }
         }
       }
     }
 
-    // Approach 2: Try commit statuses API (Vercel also posts status checks here)
-    // Note: target_url here is often the dashboard, not the preview - but check anyway
-    console.log('[Preview] Trying commit statuses API...');
-    const statusesRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/statuses`,
-      {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      }
-    );
-
-    if (statusesRes.ok) {
-      const statuses = await statusesRes.json();
-      console.log('[Preview] Commit statuses:', statuses.map((s: { context?: string; state?: string; target_url?: string }) => ({ context: s.context, state: s.state, url: s.target_url })));
-      
-      if (Array.isArray(statuses)) {
-        // Look for Vercel status with a target_url that's a real preview (not dashboard)
-        const vercelStatus = statuses.find(
-          (s: { context?: string; target_url?: string; state?: string }) =>
-            s.context?.toLowerCase().includes('vercel') &&
-            s.target_url &&
-            s.state === 'success' &&
-            isPreviewDeploymentUrl(s.target_url)
-        );
-        if (vercelStatus?.target_url) {
-          console.log('[Preview] Found URL via commit statuses:', vercelStatus.target_url);
-          return vercelStatus.target_url;
-        }
-      }
-    }
-
-    // Approach 3: Try combined status (check runs) API
-    // Note: details_url is typically the dashboard, so less likely to work
-    console.log('[Preview] Trying check runs API...');
-    const checkRunsRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branchOrSha)}/check-runs`,
-      {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      }
-    );
-
-    if (checkRunsRes.ok) {
-      const checkRunsData = await checkRunsRes.json();
-      console.log('[Preview] Check runs:', checkRunsData.check_runs?.map((c: { name?: string; app?: { slug?: string }; conclusion?: string; details_url?: string }) => ({ name: c.name, app: c.app?.slug, conclusion: c.conclusion, url: c.details_url })));
-      
-      if (checkRunsData.check_runs && Array.isArray(checkRunsData.check_runs)) {
-        // Look for Vercel check run with details_url that's a real preview
-        const vercelCheck = checkRunsData.check_runs.find(
-          (c: { name?: string; app?: { slug?: string }; details_url?: string; conclusion?: string }) =>
-            (c.name?.toLowerCase().includes('vercel') || c.app?.slug === 'vercel') &&
-            c.details_url &&
-            c.conclusion === 'success' &&
-            isPreviewDeploymentUrl(c.details_url)
-        );
-        if (vercelCheck?.details_url) {
-          console.log('[Preview] Found URL via check runs:', vercelCheck.details_url);
-          return vercelCheck.details_url;
-        }
-      }
-    }
-
-    console.log('[Preview] No preview URL found via any method');
+    console.log('[Preview] No preview URL found');
     return null;
   } catch (err) {
     console.error('[Preview] Error fetching preview URL:', err);
