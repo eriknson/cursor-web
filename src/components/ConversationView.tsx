@@ -581,23 +581,59 @@ function extractRepoName(repo: string): string {
 // Commit confirmation component - subtle design with GitHub merge icon
 function CommitConfirmation({ agent }: { agent: Agent }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
   
-  // Fetch Vercel preview URL when component mounts
+  const MAX_RETRIES = 12; // Poll for up to 2 minutes (12 x 10s)
+  const POLL_INTERVAL = 10000; // 10 seconds
+  
+  // Fetch Vercel preview URL with polling while deployment builds
   useEffect(() => {
     const parsed = parseRepository(agent.source.repository);
     if (!parsed) {
       console.log('[Preview] Could not parse repository:', agent.source.repository);
+      setIsSearching(false);
       return;
     }
     
-    console.log('[Preview] Fetching preview URL for:', parsed.owner, parsed.repo, agent.target.branchName);
+    let cancelled = false;
+    let timeoutId: NodeJS.Timeout | null = null;
     
-    fetchVercelPreviewUrl(parsed.owner, parsed.repo, agent.target.branchName)
-      .then(url => {
-        console.log('[Preview] Result:', url);
-        if (url) setPreviewUrl(url);
-      });
-  }, [agent.source.repository, agent.target.branchName]);
+    const fetchPreview = async () => {
+      if (cancelled) return;
+      
+      console.log('[Preview] Fetching preview URL for:', parsed.owner, parsed.repo, agent.target.branchName, `(attempt ${retryCount + 1})`);
+      
+      const url = await fetchVercelPreviewUrl(parsed.owner, parsed.repo, agent.target.branchName);
+      
+      if (cancelled) return;
+      
+      if (url) {
+        console.log('[Preview] Found:', url);
+        setPreviewUrl(url);
+        setIsSearching(false);
+      } else if (retryCount < MAX_RETRIES) {
+        // Schedule retry
+        console.log('[Preview] Not found yet, retrying in 10s...');
+        timeoutId = setTimeout(() => {
+          if (!cancelled) {
+            setRetryCount(prev => prev + 1);
+          }
+        }, POLL_INTERVAL);
+      } else {
+        // Max retries reached
+        console.log('[Preview] Max retries reached, giving up');
+        setIsSearching(false);
+      }
+    };
+    
+    fetchPreview();
+    
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [agent.source.repository, agent.target.branchName, retryCount]);
   
   // Construct GitHub URL for viewing the commit
   const githubCommitsUrl = getGitHubBranchCommitsUrl(agent.source.repository, agent.target.branchName);
@@ -666,8 +702,8 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
         )}
       </div>
       
-      {/* Preview deployment link */}
-      {previewUrl && (() => {
+      {/* Preview deployment link or loading state */}
+      {previewUrl ? (() => {
         // Add Vercel protection bypass secret if configured
         const bypassSecret = process.env.NEXT_PUBLIC_VERCEL_PROTECTION_BYPASS_SECRET;
         const finalPreviewUrl = bypassSecret
@@ -712,7 +748,35 @@ function CommitConfirmation({ agent }: { agent: Agent }) {
             </a>
           </div>
         );
-      })()}
+      })() : isSearching && (
+        <div className="flex items-center gap-1.5 sm:pl-[34px]">
+          {/* Loading spinner icon */}
+          <svg 
+            width="12" 
+            height="12" 
+            viewBox="0 0 16 16" 
+            fill="none" 
+            xmlns="http://www.w3.org/2000/svg"
+            className="flex-shrink-0 animate-spin"
+            style={{ color: theme.text.tertiary }}
+          >
+            <path
+              d="M8 1.5V4M8 12v2.5M3.5 8H1M15 8h-2.5M4.25 4.25L2.5 2.5M13.5 13.5l-1.75-1.75M4.25 11.75L2.5 13.5M13.5 2.5l-1.75 1.75"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          
+          <span 
+            className="text-xs"
+            style={{ color: theme.text.tertiary }}
+          >
+            Building preview...
+          </span>
+        </div>
+      )}
     </div>
   );
 }
