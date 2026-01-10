@@ -7,6 +7,8 @@ import { Agent, Message, getAgentStatus, getAgentConversation, getGitHubBranchCo
 import { CursorLoader } from '@/components/CursorLoader';
 import { ShimmerText } from '@/components/ShimmerText';
 import { useTypewriter } from '@/components/TypewriterText';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { MessageActions } from '@/components/MessageActions';
 import { theme } from '@/lib/theme';
 import { trackGitHubLinkClick } from '@/lib/analytics';
 
@@ -202,7 +204,7 @@ function renderWithCodeTags(text: string) {
   });
 }
 
-// Agent response with typewriter effect
+// Agent response with typewriter effect and markdown rendering
 function AgentResponseText({ 
   text, 
   isActive,
@@ -217,28 +219,10 @@ function AgentResponseText({
     500, // 500 chars/sec = fast typewriter
     skipAnimation
   );
-  
-  // Parse displayed text for code tags
-  const parts = displayedText.split(/(`[^`]+`)/g);
-  const rendered = parts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`')) {
-      const code = part.slice(1, -1);
-      return (
-        <code 
-          key={i} 
-          className="px-1.5 py-0.5 rounded text-inherit text-[0.9em] font-mono"
-          style={{ background: 'var(--color-theme-bg-tertiary)' }}
-        >
-          {code}
-        </code>
-      );
-    }
-    return part;
-  });
 
   return (
     <>
-      {rendered}
+      <MarkdownRenderer content={displayedText} isStreaming={isTyping && isActive} />
       {isTyping && isActive && (
         <span 
           className="inline-block w-[2px] h-[1.1em] ml-[1px] align-text-bottom"
@@ -247,6 +231,7 @@ function AgentResponseText({
             opacity: 0.8,
             animation: 'cursor-blink 0.6s ease-in-out infinite',
           }}
+          aria-hidden="true"
         />
       )}
     </>
@@ -410,9 +395,14 @@ function CloudAgentView({
         // User message
         if (item.type === 'user_message') {
           return (
-            <div key={item.id} className={`flex justify-end ${spacingClass}`}>
+            <div 
+              key={item.id} 
+              className={`flex justify-end ${spacingClass} group relative`}
+              role="article"
+              aria-label="User message"
+            >
               <div 
-                className="max-w-[85%] px-4 py-2.5 rounded-2xl"
+                className="max-w-[85%] px-4 py-2.5 rounded-2xl relative"
                 style={{ background: theme.bg.tertiary }}
               >
                 <p 
@@ -421,6 +411,12 @@ function CloudAgentView({
                 >
                   {item.text}
                 </p>
+                <MessageActions
+                  messageId={item.id}
+                  content={item.text}
+                  messageType="user_message"
+                  className="group-hover:opacity-100"
+                />
               </div>
             </div>
           );
@@ -430,22 +426,33 @@ function CloudAgentView({
         if (item.type === 'summary') {
           const isFirstInSequence = prevItem?.type !== 'assistant_message' && prevItem?.type !== 'summary';
           return (
-            <div key={item.id}>
+            <div 
+              key={item.id}
+              className="group relative"
+              role="article"
+              aria-label="Conversation summary"
+            >
               {isFirstInSequence && <CursorAvatarHeader />}
               <div className={`flex items-start sm:gap-2.5 ${isFirstInSequence ? 'pt-1.5 sm:pt-3' : spacingClass}`}>
                 <div className="hidden sm:block">
                   {isFirstInSequence ? <CursorAvatar /> : <div className="w-6 flex-shrink-0" />}
                 </div>
                 <div 
-                  className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                  className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl relative"
                   style={{ background: theme.bg.quaternary }}
                 >
                   <div 
                     className="text-[13px] leading-[1.7]"
                     style={{ color: theme.text.tertiary }}
                   >
-                    {renderWithCodeTags(item.text)}
+                    <MarkdownRenderer content={item.text} />
                   </div>
+                  <MessageActions
+                    messageId={item.id}
+                    content={item.text}
+                    messageType="summary"
+                    className="group-hover:opacity-100"
+                  />
                 </div>
               </div>
             </div>
@@ -459,7 +466,12 @@ function CloudAgentView({
         const isFirstInSequence = prevItem?.type !== 'assistant_message';
         
         return (
-          <div key={item.id}>
+          <div 
+            key={item.id}
+            className="group relative"
+            role="article"
+            aria-label="Assistant message"
+          >
             {isFirstInSequence && <CursorAvatarHeader />}
             <div 
               className={`flex items-start sm:gap-2.5 ${isFirstInSequence ? 'pt-1.5 sm:pt-3' : spacingClass}`}
@@ -468,11 +480,11 @@ function CloudAgentView({
                 {isFirstInSequence ? <CursorAvatar /> : <div className="w-6 flex-shrink-0" />}
               </div>
               <div 
-                className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
+                className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl relative"
                 style={{ background: theme.bg.quaternary }}
               >
                 <div 
-                  className="text-[13px] leading-[1.7] whitespace-pre-wrap transition-colors"
+                  className="text-[13px] leading-[1.7] transition-colors"
                   style={{ color: isActiveMessage ? theme.text.primary : theme.text.secondary }}
                 >
                   <AgentResponseText 
@@ -481,6 +493,14 @@ function CloudAgentView({
                     skipAnimation={!isActiveMessage}
                   />
                 </div>
+                {!isActiveMessage && (
+                  <MessageActions
+                    messageId={item.id}
+                    content={item.text}
+                    messageType="assistant_message"
+                    className="group-hover:opacity-100"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -489,7 +509,7 @@ function CloudAgentView({
 
       {/* Thinking indicator */}
       {showThinking && (
-        <div>
+        <div role="status" aria-live="polite" aria-label="Agent is thinking">
           {agentMessages.length === 0 && <CursorAvatarHeader />}
           <div className={`flex items-start sm:gap-2.5 ${agentMessages.length === 0 ? 'pt-1.5 sm:pt-3' : 'pt-3'}`}>
             <div className="hidden sm:block">
@@ -535,7 +555,7 @@ function CloudAgentView({
                 className="text-[13px] leading-[1.7]"
                 style={{ color: theme.text.primary }}
               >
-                {renderWithCodeTags(agent.summary!)}
+                <MarkdownRenderer content={agent.summary!} />
               </div>
             </div>
           </div>
@@ -1292,6 +1312,10 @@ export function ConversationView({
       data-scroll-container
       className="flex-1 min-h-0 overflow-y-auto scrollbar-hidden flex flex-col"
       style={{ WebkitOverflowScrolling: 'touch' }}
+      role="log"
+      aria-label="Conversation"
+      aria-live="polite"
+      aria-atomic="false"
     >
       {/* Conversation content with consistent padding */}
       <div className="pt-16 pb-20 px-2 sm:px-4">
@@ -1337,10 +1361,10 @@ export function ConversationView({
                           style={{ background: theme.bg.quaternary }}
                         >
                           <div 
-                            className="text-[13px] leading-[1.7] whitespace-pre-wrap"
+                            className="text-[13px] leading-[1.7]"
                             style={{ color: theme.text.tertiary }}
                           >
-                            {renderWithCodeTags(msg.text)}
+                            <MarkdownRenderer content={msg.text} />
                           </div>
                         </div>
                       </div>
@@ -1363,7 +1387,7 @@ export function ConversationView({
                         className="text-[13px] leading-[1.7]"
                         style={{ color: theme.text.tertiary }}
                       >
-                        {renderWithCodeTags(turn.summary)}
+                        <MarkdownRenderer content={turn.summary} />
                       </div>
                     </div>
                   </div>
@@ -1407,7 +1431,7 @@ export function ConversationView({
               {/* Current agent response - left aligned */}
               <div className="text-sm">
                 {error ? (
-                  <div>
+                  <div role="alert" aria-live="assertive">
                     <CursorAvatarHeader />
                     <div className="flex items-start sm:gap-2.5 pt-1.5 sm:pt-3">
                       <div className="hidden sm:block">
@@ -1417,8 +1441,26 @@ export function ConversationView({
                         className="max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl"
                         style={{ background: theme.bg.quaternary }}
                       >
-                        <div style={{ color: theme.text.tertiary }}>
-                          {error}
+                        <div className="flex flex-col gap-2">
+                          <div style={{ color: theme.text.tertiary }}>
+                            {error}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setError(null);
+                              if (agentId && agentId !== 'pending') {
+                                fetchAll(true, true);
+                              }
+                            }}
+                            className="text-xs px-3 py-1.5 rounded-md transition-colors self-start"
+                            style={{
+                              background: theme.bg.tertiary,
+                              color: theme.text.secondary,
+                            }}
+                            aria-label="Retry loading conversation"
+                          >
+                            Retry
+                          </button>
                         </div>
                       </div>
                     </div>

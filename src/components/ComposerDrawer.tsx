@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { CursorLoader } from './CursorLoader';
 import { trackComposerSubmit } from '@/lib/analytics';
 
@@ -51,13 +51,17 @@ interface ComposerDrawerProps {
   onInputChange?: (hasInput: boolean) => void;
 }
 
-export function ComposerDrawer({
+export interface ComposerDrawerRef {
+  focus: () => void;
+}
+
+export const ComposerDrawer = forwardRef<ComposerDrawerRef, ComposerDrawerProps>(({
   onSubmit,
   isLoading,
   disabled,
   placeholder = 'Ask Cursor to build, plan, fix anything',
   onInputChange,
-}: ComposerDrawerProps) {
+}, ref) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [value, setValue] = useState('');
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
@@ -104,6 +108,16 @@ export function ComposerDrawer({
   useEffect(() => {
     onInputChange?.(value.trim().length > 0);
   }, [value, onInputChange]);
+
+  // Expose focus method via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      setIsExpanded(true);
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    },
+  }));
 
   // Handle escape key to collapse
   useEffect(() => {
@@ -224,6 +238,8 @@ export function ComposerDrawer({
               autoCorrect="off"
               autoCapitalize="sentences"
               enterKeyHint="send"
+              aria-label="Message composer"
+              aria-describedby="composer-help"
               className="flex-1 bg-transparent resize-none focus:outline-none disabled:opacity-50 text-[15px] leading-relaxed px-4"
               style={{
                 height: isExpanded ? '72px' : 'auto',
@@ -317,6 +333,7 @@ export function ComposerDrawer({
                 handleSubmit();
               }}
               disabled={!value.trim() || isLoading || disabled}
+              aria-label="Send message"
               className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
               style={{
                 background: hasContent ? 'var(--color-theme-fg)' : 'var(--color-theme-bg-tertiary)',
@@ -341,4 +358,6 @@ export function ComposerDrawer({
       </div>
     </>
   );
-}
+});
+
+ComposerDrawer.displayName = 'ComposerDrawer';
