@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import Image from 'next/image';
 import { Composer } from '@/components/Composer';
-import { ComposerDrawer } from '@/components/ComposerDrawer';
+import { ComposerDrawer, ComposerDrawerRef } from '@/components/ComposerDrawer';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { ConversationView, ConversationTurn } from '@/components/ConversationView';
 import { UserAvatarDropdown } from '@/components/UserAvatarDropdown';
 import { CursorLoader } from '@/components/CursorLoader';
@@ -202,8 +203,29 @@ export default function Home() {
   // Frozen summary - captured when follow-up is sent to preserve in conversation history
   const [frozenSummary, setFrozenSummary] = useState<string | null>(null);
 
+  // Composer ref for keyboard shortcuts
+  const composerRef = useRef<ComposerDrawerRef>(null);
+
   // Guard for concurrent run fetches
   const runsFetchInFlight = useRef(false);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onFocusComposer: () => {
+      composerRef.current?.focus();
+    },
+    onShowHelp: () => {
+      toast.info('Keyboard shortcuts: Cmd+K to focus composer, Cmd+/ for help', {
+        duration: 4000,
+      });
+    },
+    onScrollToTop: () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    onScrollToBottom: () => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    },
+  });
 
   // Centralized auth failure handler
   const handleAuthFailure = useCallback((message = 'Session expired. Please re-enter your API key.') => {
@@ -1151,6 +1173,7 @@ export default function Home() {
         <div className="px-4 pb-4 pt-2">
           <div className="max-w-[700px] mx-auto">
             <ComposerDrawer
+              ref={composerRef}
               onSubmit={handleLaunch}
               isLoading={isLaunching}
               disabled={!launchRepo}
