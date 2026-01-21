@@ -395,6 +395,30 @@ export default function Home() {
     });
   }, [repos, repoLastUsedMap]);
 
+  const repoCount = sortedRepos.length;
+
+  const homeStats = useMemo(() => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    let active = 0;
+    let recent = 0;
+
+    runs.forEach((agent) => {
+      const createdAt = new Date(agent.createdAt).getTime();
+      if (createdAt >= weekAgo) {
+        recent += 1;
+      }
+      if (agent.status === 'RUNNING' || agent.status === 'CREATING') {
+        active += 1;
+      }
+    });
+
+    return {
+      active,
+      recent,
+    };
+  }, [runs]);
+
   // Prefetch the latest agent conversation for repos with recent activity so opening feels instant.
   // This is now much more conservative - only prefetch after user selects a repo.
   // The initial aggressive prefetching was causing rate limits on login.
@@ -986,6 +1010,13 @@ export default function Home() {
     ? 'Add a task for Cursor to do'
     : 'Ask Cursor to build, plan, fix anything';
 
+  const selectedRepoLabel = selectedRepo
+    ? (selectedRepo.owner ? `${selectedRepo.owner}/${selectedRepo.name}` : selectedRepo.name)
+    : 'All repositories';
+  const homeHeading = selectedRepo?.name
+    ? `Ready to work on ${selectedRepo.name}`
+    : 'Ready to start a new agent';
+
   // Debug utility: add `?debugBlur=1` to verify backdrop-filter works at all.
   // If this doesn't blur the list behind it, the environment is disabling backdrop-filter.
   const debugBlur =
@@ -1131,16 +1162,102 @@ export default function Home() {
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col px-4">
-            <div className="max-w-[700px] mx-auto w-full flex-1 min-h-0 flex flex-col">
-              <HomeActivityList
-                agents={runs}
-                onSelectAgent={handleSelectAgent}
-                onPrefetchAgent={prefetchAgentData}
-                isLoading={isLoadingRuns}
-                selectedRepo={selectedRepo}
-                hideSearch={true}
-                searchQuery={runsSearchQuery}
-              />
+            <div className="max-w-[700px] mx-auto w-full flex-1 min-h-0 flex flex-col gap-4">
+              <div
+                className="rounded-2xl border px-4 py-4 sm:px-5"
+                style={{
+                  background: theme.bg.card,
+                  borderColor: theme.border.primary,
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: theme.bg.secondary }}
+                  >
+                    <Image
+                      src="/brand/cursor-cube-25d.svg"
+                      alt="Cursor cube"
+                      width={24}
+                      height={24}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-[11px] uppercase tracking-[0.2em]"
+                      style={{ color: theme.text.quaternary }}
+                    >
+                      Home
+                    </p>
+                    <h2
+                      className="text-[20px] font-semibold leading-tight mt-1"
+                      style={{ color: theme.text.primary }}
+                    >
+                      {homeHeading}
+                    </h2>
+                    <p className="text-sm mt-1" style={{ color: theme.text.tertiary }}>
+                      Start a new agent below or resume a recent run. Search to filter by repo or summary.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span
+                        className="text-xs px-2.5 py-1 rounded-full"
+                        style={{
+                          background: theme.bg.tertiary,
+                          color: theme.text.tertiary,
+                        }}
+                      >
+                        Focus: {selectedRepoLabel}
+                      </span>
+                      <span
+                        className="text-xs px-2.5 py-1 rounded-full"
+                        style={{
+                          background: theme.bg.tertiary,
+                          color: theme.text.tertiary,
+                        }}
+                      >
+                        Compose with clear goals and success criteria
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { label: 'Active now', value: homeStats.active },
+                    { label: 'Runs (7d)', value: homeStats.recent },
+                      { label: 'Repositories', value: repoCount },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-xl px-3 py-2 border"
+                      style={{
+                        background: theme.bg.secondary,
+                        borderColor: theme.border.tertiary,
+                      }}
+                    >
+                      <p className="text-[11px]" style={{ color: theme.text.quaternary }}>
+                        {stat.label}
+                      </p>
+                      <p
+                        className="text-[18px] font-semibold mt-1"
+                        style={{ color: theme.text.primary }}
+                      >
+                        {stat.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 min-h-0">
+                <HomeActivityList
+                  agents={runs}
+                  onSelectAgent={handleSelectAgent}
+                  onPrefetchAgent={prefetchAgentData}
+                  isLoading={isLoadingRuns}
+                  selectedRepo={selectedRepo}
+                  hideSearch={true}
+                  searchQuery={runsSearchQuery}
+                />
+              </div>
             </div>
           </div>
         )}

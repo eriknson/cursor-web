@@ -325,6 +325,9 @@ export function HomeActivityList({
     return groups;
   }, [agents, effectiveSearchQuery, selectedRepo]);
 
+  const filteredCount = today.length + yesterday.length + lastWeek.length + older.length;
+  const resultsLabel = `${filteredCount} run${filteredCount === 1 ? '' : 's'}`;
+  const activityLabel = effectiveSearchQuery.trim() ? 'Search results' : 'Recent activity';
   const hasResults = today.length > 0 || yesterday.length > 0 || lastWeek.length > 0 || older.length > 0;
 
   // Calculate running indices for staggered animations
@@ -333,12 +336,30 @@ export function HomeActivityList({
   const lastWeekStartIndex = yesterdayStartIndex + yesterday.length;
   const olderStartIndex = lastWeekStartIndex + lastWeek.length;
 
-  // Empty state message
-  const getEmptyMessage = () => {
-    if (effectiveSearchQuery.trim()) return 'No matching agents';
-    if (selectedRepo) return `No agents for ${selectedRepo.name}`;
-    return 'No agents yet';
-  };
+  const emptyState = useMemo(() => {
+    const trimmedQuery = effectiveSearchQuery.trim();
+    if (trimmedQuery) {
+      return {
+        title: `No matches for "${trimmedQuery}"`,
+        description: 'Try a different keyword or clear the search.',
+        hints: ['Search by repo name', 'Search by run summary'],
+      };
+    }
+
+    if (selectedRepo) {
+      return {
+        title: `No runs for ${selectedRepo.name} yet`,
+        description: 'Describe a task below to launch the first agent for this repo.',
+        hints: ['Plan a feature', 'Fix a bug', 'Review a PR'],
+      };
+    }
+
+    return {
+      title: 'No agents yet',
+      description: 'Describe a task below to launch your first agent.',
+      hints: ['Plan a feature', 'Fix a bug', 'Review a PR'],
+    };
+  }, [effectiveSearchQuery, selectedRepo]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -377,12 +398,51 @@ export function HomeActivityList({
         ) : !hasResults ? (
           <div 
             className="text-center py-12 text-sm px-4 animate-fade-in"
-            style={{ color: theme.text.quaternary }}
           >
-            {getEmptyMessage()}
+            <div
+              className="rounded-2xl border px-5 py-5"
+              style={{
+                background: theme.bg.card,
+                borderColor: theme.border.secondary,
+              }}
+            >
+              <p className="text-sm font-medium" style={{ color: theme.text.primary }}>
+                {emptyState.title}
+              </p>
+              <p className="text-xs mt-1" style={{ color: theme.text.tertiary }}>
+                {emptyState.description}
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {emptyState.hints.map((hint) => (
+                  <div
+                    key={hint}
+                    className="text-xs px-3 py-2 rounded-xl"
+                    style={{
+                      background: theme.bg.secondary,
+                      color: theme.text.tertiary,
+                    }}
+                  >
+                    {hint}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <>
+            <div className="px-4 pb-2">
+              <div className="flex items-center justify-between">
+                <p
+                  className="text-[11px] uppercase tracking-[0.2em]"
+                  style={{ color: theme.text.quaternary }}
+                >
+                  {activityLabel}
+                </p>
+                <p className="text-xs" style={{ color: theme.text.quaternary }}>
+                  {resultsLabel}
+                </p>
+              </div>
+            </div>
             <DateGroup title="Today" agents={today} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={todayStartIndex} />
             <DateGroup title="Yesterday" agents={yesterday} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={yesterdayStartIndex} />
             <DateGroup title="Last 7 Days" agents={lastWeek} onSelectAgent={onSelectAgent} onPrefetchAgent={onPrefetchAgent} startIndex={lastWeekStartIndex} />
