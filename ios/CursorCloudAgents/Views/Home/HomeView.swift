@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @State private var viewModel: HomeViewModel
+    @State private var navigationPath = NavigationPath()
     let userInfo: UserInfo?
     let onLogout: () -> Void
 
@@ -18,7 +19,8 @@ struct HomeView: View {
             RepoPickerView(
                 repositories: viewModel.sortedRepositories,
                 selectedRepository: $viewModel.selectedRepository,
-                isLoading: viewModel.isLoadingRepos
+                isLoading: viewModel.isLoadingRepos,
+                showAllOption: false
             )
             Spacer()
             UserAvatarView(
@@ -48,7 +50,7 @@ struct HomeView: View {
             await viewModel.refreshAgents()
         }
 
-        return NavigationStack {
+        return NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 16) {
                     header
@@ -64,7 +66,11 @@ struct HomeView: View {
                     isLoading: viewModel.isLaunchingAgent,
                     disabled: viewModel.selectedRepository == nil && viewModel.repositories.isEmpty
                 ) { prompt, model in
-                    Task { await viewModel.launchAgent(prompt: prompt, model: model) }
+                    Task {
+                        if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
+                            navigationPath.append(agent)
+                        }
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)

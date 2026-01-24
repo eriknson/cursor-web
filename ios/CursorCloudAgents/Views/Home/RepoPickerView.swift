@@ -4,6 +4,7 @@ struct RepoPickerView: View {
     let repositories: [Repository]
     @Binding var selectedRepository: Repository?
     var isLoading: Bool
+    var showAllOption: Bool = false
 
     @State private var isPresented = false
 
@@ -30,20 +31,22 @@ struct RepoPickerView: View {
         .sheet(isPresented: $isPresented) {
             NavigationStack {
                 List {
-                    Button {
-                        selectedRepository = nil
-                        isPresented = false
-                    } label: {
-                        HStack {
-                            Text("All Repositories")
-                            Spacer()
-                            if selectedRepository == nil {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(Theme.accent)
+                    if showAllOption {
+                        Button {
+                            selectedRepository = nil
+                            isPresented = false
+                        } label: {
+                            HStack {
+                                Text("All Repositories")
+                                Spacer()
+                                if selectedRepository == nil {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Theme.accent)
+                                }
                             }
                         }
+                        .listRowBackground(Theme.bgMain)
                     }
-                    .listRowBackground(Theme.bgMain)
 
                     Section {
                         ForEach(repositories) { repo in

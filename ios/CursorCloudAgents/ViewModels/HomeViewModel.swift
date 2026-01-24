@@ -79,10 +79,10 @@ final class HomeViewModel {
         selectedRepository = repository
     }
 
-    func launchAgent(prompt: String, model: String) async {
+    func launchAgent(prompt: String, model: String) async -> Agent? {
         guard let repository = selectedRepository ?? repositories.first else {
             errorMessage = "Select a repository to launch an agent."
-            return
+            return nil
         }
 
         isLaunchingAgent = true
@@ -95,11 +95,14 @@ final class HomeViewModel {
                 model: model
             )
             agents.insert(agent, at: 0)
+            isLaunchingAgent = false
+            return agent
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLaunchingAgent = false
+        return nil
     }
 
     private func fetchRepositories() async {
