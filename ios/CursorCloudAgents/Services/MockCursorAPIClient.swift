@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 
+@MainActor
 @Observable
 final class MockCursorAPIClient: CursorAPIClientProtocol {
     var apiKey: String?
@@ -106,16 +107,19 @@ final class MockCursorAPIClient: CursorAPIClientProtocol {
 
     func listRepositories() async throws -> [Repository] {
         try await simulateDelay()
+        refreshAgentStatuses()
         return repositories
     }
 
     func listAgents(limit: Int) async throws -> [Agent] {
         try await simulateDelay()
+        refreshAgentStatuses()
         return Array(agents.prefix(limit))
     }
 
     func getAgent(id: String) async throws -> Agent {
         try await simulateDelay()
+        refreshAgentStatuses()
         guard let agent = agents.first(where: { $0.id == id }) else {
             throw CursorAPIError.notFound
         }
@@ -124,6 +128,7 @@ final class MockCursorAPIClient: CursorAPIClientProtocol {
 
     func getConversation(agentId: String) async throws -> [Message] {
         try await simulateDelay()
+        refreshAgentStatuses()
         return conversations[agentId] ?? []
     }
 
@@ -182,5 +187,26 @@ final class MockCursorAPIClient: CursorAPIClientProtocol {
 
     private func simulateDelay() async throws {
         try await Task.sleep(nanoseconds: UInt64.random(in: 400_000_000...1_200_000_000))
+    }
+
+    private func refreshAgentStatuses() {
+        let now = Date()
+        for index in agents.indices {
+            let agent = agents[index]
+            guard agent.status == .running else { continue }
+            if now.timeIntervalSince(agent.createdAt) > 90 {
+                let summary = agent.summary ?? "Completed the task and prepared a summary of the updates."
+                agents[index] = Agent(
+                    id: agent.id,
+                    name: agent.name,
+                    status: .finished,
+                    source: agent.source,
+                    target: agent.target,
+                    summary: summary,
+                    createdAt: agent.createdAt,
+                    model: agent.model
+                )
+            }
+        }
     }
 }
