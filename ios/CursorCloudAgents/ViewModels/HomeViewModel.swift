@@ -97,7 +97,8 @@ final class HomeViewModel {
         async let agentsTask = fetchAgents()
         _ = await (repositoriesTask, agentsTask)
 
-        if selectedRepository == nil {
+        if selectedRepository == nil,
+           UserDefaults.standard.string(forKey: lastSelectedRepoKey) != "__all__" {
             selectedRepository = sortedRepositories.first
         }
     }
@@ -112,7 +113,7 @@ final class HomeViewModel {
         if let repository {
             UserDefaults.standard.set(repository.repository, forKey: lastSelectedRepoKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: lastSelectedRepoKey)
+            UserDefaults.standard.set("__all__", forKey: lastSelectedRepoKey)
         }
     }
 
@@ -148,9 +149,14 @@ final class HomeViewModel {
         do {
             repositories = try await apiClient.listRepositories()
             if selectedRepository == nil {
-                if let stored = UserDefaults.standard.string(forKey: lastSelectedRepoKey),
-                   let match = repositories.first(where: { $0.repository == stored }) {
-                    selectedRepository = match
+                if let stored = UserDefaults.standard.string(forKey: lastSelectedRepoKey) {
+                    if stored == "__all__" {
+                        selectedRepository = nil
+                    } else if let match = repositories.first(where: { $0.repository == stored }) {
+                        selectedRepository = match
+                    } else {
+                        selectedRepository = repositories.first
+                    }
                 } else {
                     selectedRepository = repositories.first
                 }
