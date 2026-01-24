@@ -4,7 +4,13 @@ import Observation
 @MainActor
 @Observable
 final class AuthViewModel {
-    var apiKeyInput: String = ""
+    var apiKeyInput: String = "" {
+        didSet {
+            if !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                errorMessage = nil
+            }
+        }
+    }
     var isValidating: Bool = false
     var errorMessage: String?
     var userInfo: UserInfo?

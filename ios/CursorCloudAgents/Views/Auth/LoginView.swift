@@ -17,6 +17,10 @@ struct LoginView: View {
                 SecureField("Enter Cursor API key", text: $viewModel.apiKeyInput)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .onSubmit {
+                        Task { await viewModel.validateAndSaveKey() }
+                    }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                     .background(Theme.bgCard)
