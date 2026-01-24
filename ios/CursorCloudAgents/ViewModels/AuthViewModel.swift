@@ -48,6 +48,7 @@ final class AuthViewModel {
         userInfo = nil
         apiKeyInput = ""
         errorMessage = nil
+        isInitializing = false
         apiClient.apiKey = nil
         do {
             try await keychain.deleteApiKey()
