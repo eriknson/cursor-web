@@ -17,5 +17,8 @@ struct CursorLoaderView: View {
                     isAnimating = true
                 }
             }
+            .onDisappear {
+                isAnimating = false
+            }
     }
 }
