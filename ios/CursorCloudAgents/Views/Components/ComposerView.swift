@@ -55,6 +55,7 @@ struct ComposerView: View {
                 .background(isSendEnabled ? Theme.textPrimary : Theme.bgTertiary)
                 .clipShape(Circle())
                 .accessibilityLabel("Send message")
+                .accessibilityHint("Sends the current prompt")
             }
 
             if isExpanded {
