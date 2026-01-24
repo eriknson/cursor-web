@@ -52,6 +52,9 @@ struct ComposerView: View {
                 HStack {
                     ModelPickerView(selectedModel: $selectedModel)
                     Spacer()
+                    Text("\(trimmedText.count) / 1000")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textQuaternary)
                 }
             }
         }
