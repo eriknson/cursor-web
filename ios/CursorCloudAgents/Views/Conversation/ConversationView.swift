@@ -70,9 +70,7 @@ struct ConversationView: View {
                         .padding(.top, 12)
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        hideKeyboard()
-                    }
+                    .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: viewModel.messages.count) { _, _ in
                         withAnimation(.easeOut(duration: 0.2)) {

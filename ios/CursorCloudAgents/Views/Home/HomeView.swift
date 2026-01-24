@@ -32,9 +32,7 @@ struct HomeView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 80)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    hideKeyboard()
-                }
+                .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
                 composer
             }
