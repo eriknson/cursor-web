@@ -76,6 +76,7 @@ struct ConversationView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                     }
+                    .scrollIndicators(.hidden)
                     .contentShape(Rectangle())
                     .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
                     .scrollDismissesKeyboard(.interactively)
