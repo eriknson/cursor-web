@@ -9,6 +9,7 @@ struct ComposerView: View {
     @State private var text: String = ""
     @State private var selectedModel: String = modelOptions.first?.id ?? "composer-1"
     @FocusState private var isFocused: Bool
+    private let maxLength = 1000
 
     private var isExpanded: Bool {
         isFocused || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -29,6 +30,11 @@ struct ComposerView: View {
                         submit()
                     }
                     .disabled(disabled || isLoading)
+                    .onChange(of: text) { _, newValue in
+                        if newValue.count > maxLength {
+                            text = String(newValue.prefix(maxLength))
+                        }
+                    }
 
                 Button {
                     submit()
