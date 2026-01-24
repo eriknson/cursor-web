@@ -64,6 +64,7 @@ struct ComposerView: View {
                     Text("\(trimmedText.count) / 1000")
                         .font(.caption)
                         .foregroundStyle(Theme.textQuaternary)
+                        .accessibilityLabel("Character count \(trimmedText.count) of 1000")
                 }
             }
         }
