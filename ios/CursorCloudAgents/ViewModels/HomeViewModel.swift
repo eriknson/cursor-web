@@ -108,6 +108,7 @@ final class HomeViewModel {
     func selectRepository(_ repository: Repository?) {
         selectedRepository = repository
         searchQuery = ""
+        errorMessage = nil
         if let repository {
             UserDefaults.standard.set(repository.repository, forKey: lastSelectedRepoKey)
         } else {
