@@ -1,5 +1,8 @@
 import SwiftUI
 import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct HomeView: View {
     @State private var viewModel: HomeViewModel
@@ -28,6 +31,10 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 80)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    hideKeyboard()
+                }
 
                 composer
             }
@@ -37,6 +44,12 @@ struct HomeView: View {
                 ConversationView(agent: agent, apiClient: viewModel.apiClient, onAuthFailure: onLogout)
             }
         }
+    }
+
+    private func hideKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
     }
 
     private var header: some View {
