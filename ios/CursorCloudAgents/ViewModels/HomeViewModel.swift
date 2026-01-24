@@ -125,6 +125,7 @@ final class HomeViewModel {
 
         isLaunchingAgent = true
         errorMessage = nil
+        defer { isLaunchingAgent = false }
 
         do {
             let agent = try await apiClient.launchAgent(
@@ -133,15 +134,12 @@ final class HomeViewModel {
                 model: model
             )
             agents.insert(agent, at: 0)
-            isLaunchingAgent = false
             return agent
         } catch {
             if handleAuthFailure(error) { return nil }
             errorMessage = error.localizedDescription
+            return nil
         }
-
-        isLaunchingAgent = false
-        return nil
     }
 
     private func fetchRepositories() async {
