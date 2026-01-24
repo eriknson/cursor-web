@@ -33,6 +33,8 @@ struct HomeView: View {
 
         let searchBar = TextField("Search agents...", text: $viewModel.searchQuery)
             .textFieldStyle(.plain)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(Theme.bgCard)
