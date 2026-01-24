@@ -96,6 +96,10 @@ final class HomeViewModel {
         async let repositoriesTask = fetchRepositories()
         async let agentsTask = fetchAgents()
         _ = await (repositoriesTask, agentsTask)
+
+        if selectedRepository == nil {
+            selectedRepository = sortedRepositories.first
+        }
     }
 
     func refreshAgents() async {
@@ -148,7 +152,7 @@ final class HomeViewModel {
                    let match = repositories.first(where: { $0.repository == stored }) {
                     selectedRepository = match
                 } else {
-                    selectedRepository = sortedRepositories.first
+                    selectedRepository = repositories.first
                 }
             }
         } catch {
