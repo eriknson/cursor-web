@@ -8,7 +8,16 @@ struct ContentView: View {
         @Bindable var authViewModel = authViewModel
 
         Group {
-            if authViewModel.isAuthenticated {
+            if authViewModel.isInitializing {
+                VStack(spacing: 16) {
+                    CursorLoaderView(size: 48)
+                    Text("Loading")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.bgMain)
+            } else if authViewModel.isAuthenticated {
                 HomeView(
                     apiClient: authViewModel.apiClient,
                     userInfo: authViewModel.userInfo,

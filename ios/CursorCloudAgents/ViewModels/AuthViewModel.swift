@@ -11,6 +11,7 @@ final class AuthViewModel {
             }
         }
     }
+    var isInitializing: Bool = true
     var isValidating: Bool = false
     var errorMessage: String?
     var userInfo: UserInfo?
@@ -25,8 +26,14 @@ final class AuthViewModel {
     }
 
     func loadStoredKey() async {
-        guard !isAuthenticated else { return }
-        guard let storedKey = await keychain.getApiKey() else { return }
+        guard !isAuthenticated else {
+            isInitializing = false
+            return
+        }
+        guard let storedKey = await keychain.getApiKey() else {
+            isInitializing = false
+            return
+        }
         await validateAndSaveKey(storedKey)
     }
 
@@ -65,5 +72,6 @@ final class AuthViewModel {
         }
 
         isValidating = false
+        isInitializing = false
     }
 }
