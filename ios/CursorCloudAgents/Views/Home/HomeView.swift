@@ -153,6 +153,7 @@ struct HomeView: View {
             )
             .allowsHitTesting(false)
         )
+        .animation(.easeInOut(duration: 0.2), value: viewModel.selectedRepository == nil)
     }
 
     private var emptyStateMessage: String {
