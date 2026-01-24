@@ -58,6 +58,5 @@ struct AgentListView: View {
         .scrollDismissesKeyboard(.interactively)
         .accessibilityLabel("Agent list")
         .accessibilityHint("Shows recent agent runs grouped by date")
-        .accessibilityAddTraits(.isSummaryElement)
     }
 }
