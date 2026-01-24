@@ -19,8 +19,6 @@ struct HomeView: View {
     }
 
     var body: some View {
-        @Bindable var viewModel = viewModel
-        
         return NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 16) {
@@ -51,6 +49,8 @@ struct HomeView: View {
     }
 
     private var header: some View {
+        @Bindable var viewModel = viewModel
+
         HStack {
             RepoPickerView(
                 repositories: viewModel.sortedRepositories,
@@ -76,6 +76,8 @@ struct HomeView: View {
     }
 
     private var searchBar: some View {
+        @Bindable var viewModel = viewModel
+
         TextField("Search agents...", text: $viewModel.searchQuery)
             .textFieldStyle(.plain)
             .textInputAutocapitalization(.never)
