@@ -24,6 +24,7 @@ final class ConversationViewModel {
             currentAgentId = agentId
             messages = []
             errorMessage = nil
+            agent = nil
         }
 
         isLoading = true
