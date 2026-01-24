@@ -3,6 +3,9 @@ import Observation
 #if canImport(UIKit)
 import UIKit
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ConversationView: View {
     let agent: Agent
