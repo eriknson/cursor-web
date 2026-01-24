@@ -118,7 +118,7 @@ final class HomeViewModel {
     }
 
     func launchAgent(prompt: String, model: String) async -> Agent? {
-        guard let repository = selectedRepository ?? repositories.first else {
+        guard let repository = selectedRepository else {
             errorMessage = "Select a repository to launch an agent."
             return nil
         }

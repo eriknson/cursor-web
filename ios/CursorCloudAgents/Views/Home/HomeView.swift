@@ -108,7 +108,7 @@ struct HomeView: View {
         ComposerView(
             placeholder: "Ask Cursor to build, plan, fix anything",
             isLoading: viewModel.isLaunchingAgent,
-            disabled: viewModel.selectedRepository == nil && viewModel.repositories.isEmpty
+            disabled: viewModel.selectedRepository == nil
         ) { prompt, model in
             Task {
                 if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
