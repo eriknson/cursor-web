@@ -154,11 +154,7 @@ final class HomeViewModel {
                         selectedRepository = nil
                     } else if let match = repositories.first(where: { $0.repository == stored }) {
                         selectedRepository = match
-                    } else {
-                        selectedRepository = repositories.first
                     }
-                } else {
-                    selectedRepository = repositories.first
                 }
             }
         } catch {
