@@ -55,5 +55,6 @@ struct AgentListView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .accessibilityLabel("Agent list")
     }
 }
