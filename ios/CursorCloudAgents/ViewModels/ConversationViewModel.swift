@@ -74,6 +74,7 @@ final class ConversationViewModel {
             self.agent = agent
             let conversation = try await apiClient.getConversation(agentId: agentId)
             mergeMessages(conversation)
+            resolvePendingFollowUp()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -91,7 +92,6 @@ final class ConversationViewModel {
 
         do {
             try await apiClient.addFollowUp(agentId: agentId, prompt: trimmed)
-            pendingFollowUp = nil
             await refresh()
             if agent?.status.isActive == true {
                 startPolling()
@@ -111,6 +111,13 @@ final class ConversationViewModel {
             messages = newMessages
         } else if !appended.isEmpty {
             messages.append(contentsOf: appended)
+        }
+    }
+
+    private func resolvePendingFollowUp() {
+        guard let pending = pendingFollowUp else { return }
+        if messages.contains(where: { $0.type == .userMessage && $0.text == pending }) {
+            pendingFollowUp = nil
         }
     }
 }
