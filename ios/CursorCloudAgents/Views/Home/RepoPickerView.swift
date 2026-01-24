@@ -31,6 +31,7 @@ struct RepoPickerView: View {
             }
         }
         .disabled(isLoading)
+        .accessibilityLabel("Repository picker")
         .sheet(isPresented: $isPresented) {
             NavigationStack {
                 List {
@@ -72,6 +73,7 @@ struct RepoPickerView: View {
                                         Text(repo.owner)
                                             .font(.footnote)
                                             .foregroundStyle(Theme.textTertiary)
+                                    .accessibilityHidden(true)
                                     }
                                     Spacer()
                                     if let pushedAt = repo.pushedAt {
