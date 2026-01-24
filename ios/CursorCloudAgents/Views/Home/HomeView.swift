@@ -103,6 +103,7 @@ struct HomeView: View {
                 hideKeyboard()
             }
             .accessibilityLabel("Search agents")
+            .accessibilityHint("Filters agent runs by name, summary, or repository")
     }
 
     private var content: some View {
