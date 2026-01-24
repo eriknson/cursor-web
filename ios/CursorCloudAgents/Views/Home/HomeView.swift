@@ -32,6 +32,7 @@ struct HomeView: View {
                     .foregroundStyle(Theme.textTertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .accessibilityLabel("Signed in as \(email)")
             }
             UserAvatarView(
                 userEmail: userInfo?.userEmail,
