@@ -21,6 +21,7 @@ struct ModelPickerView: View {
             }
         }
         .pickerStyle(.menu)
+        .accessibilityHint("Select the model for the agent")
         .tint(Theme.textSecondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
