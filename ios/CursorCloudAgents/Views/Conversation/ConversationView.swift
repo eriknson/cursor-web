@@ -60,6 +60,13 @@ struct ConversationView: View {
                             scrollProxy.scrollTo("bottom", anchor: .bottom)
                         }
                     }
+                    .onChange(of: viewModel.isLoading) { _, isLoading in
+                        if !isLoading {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                scrollProxy.scrollTo("bottom", anchor: .bottom)
+                            }
+                        }
+                    }
                     .onChange(of: viewModel.pendingFollowUp) { _, _ in
                         withAnimation(.easeOut(duration: 0.2)) {
                             scrollProxy.scrollTo("bottom", anchor: .bottom)
