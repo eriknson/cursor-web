@@ -26,6 +26,13 @@ struct HomeView: View {
                 showAllOption: false
             )
             Spacer()
+            if let email = userInfo?.userEmail {
+                Text(email)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             UserAvatarView(
                 userEmail: userInfo?.userEmail,
                 userName: userInfo?.apiKeyName,
