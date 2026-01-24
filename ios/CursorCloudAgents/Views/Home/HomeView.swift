@@ -58,7 +58,7 @@ struct HomeView: View {
                 repositories: viewModel.sortedRepositories,
                 selectedRepository: $viewModel.selectedRepository,
                 isLoading: viewModel.isLoadingRepos,
-                showAllOption: false
+                showAllOption: true
             )
             Spacer()
             if let email = userInfo?.userEmail {
