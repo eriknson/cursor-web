@@ -121,6 +121,22 @@ struct ConversationView: View {
         .background(Theme.bgMain)
         .navigationTitle(viewModel.agent?.name ?? agent.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) {
+                    Text(viewModel.agent?.name ?? agent.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    if let repoName = repoDisplayName {
+                        Text(repoName)
+                            .font(.caption)
+                            .foregroundStyle(Theme.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
         .task {
             await viewModel.loadConversation(agentId: agent.id)
         }
@@ -164,6 +180,18 @@ struct ConversationView: View {
 
     private var showSummary: Bool {
         viewModel.agent?.status.isTerminal == true && viewModel.agent?.summary != nil
+    }
+
+    private var repoDisplayName: String? {
+        let repository = viewModel.agent?.source.repository ?? agent.source.repository
+        let parts = repository.split(separator: "/").map(String.init)
+        if parts.count >= 3, parts[0].contains("github") {
+            return "\(parts[1])/\(parts[2])"
+        }
+        if parts.count >= 2 {
+            return "\(parts[parts.count - 2])/\(parts[parts.count - 1])"
+        }
+        return nil
     }
 
     private func summaryView(_ summary: String, maxWidth: CGFloat) -> some View {
