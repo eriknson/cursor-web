@@ -119,7 +119,7 @@ struct ConversationView: View {
             }
         }
         .background(Theme.bgMain)
-        .navigationTitle(viewModel.agent?.name ?? agent.name)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
