@@ -126,6 +126,7 @@ struct HomeView: View {
                     .font(.caption)
                     .foregroundStyle(Theme.textQuaternary)
                     .padding(.horizontal, 4)
+                    .accessibilityLabel("Select a repository to launch an agent")
             }
 
             ComposerView(
