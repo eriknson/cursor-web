@@ -29,6 +29,7 @@ struct LoginView: View {
                             .stroke(Theme.borderSecondary, lineWidth: 1)
                     )
                     .foregroundStyle(Theme.textPrimary)
+                    .accessibilityHint("Enter your Cursor API key")
 
                 if let errorMessage = viewModel.errorMessage {
                     ErrorView(message: errorMessage)
