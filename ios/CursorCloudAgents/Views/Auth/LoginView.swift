@@ -55,6 +55,7 @@ struct LoginView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .disabled(viewModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isValidating)
+            .accessibilityHint("Validates your API key and signs you in")
 
             VStack(spacing: 6) {
                 Text("Get your API key from")

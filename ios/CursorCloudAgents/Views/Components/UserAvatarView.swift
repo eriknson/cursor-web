@@ -28,10 +28,12 @@ struct UserAvatarView: View {
             Button("Go to Dashboard") {
                 openURL(URL(string: "https://cursor.com/dashboard")!)
             }
+            .accessibilityHint("Opens the Cursor dashboard in Safari")
 
             Button(role: .destructive, action: onLogout) {
                 Text("Sign out")
             }
+            .accessibilityHint("Signs out of your account")
         } label: {
             Circle()
                 .fill(Theme.bgTertiary)
