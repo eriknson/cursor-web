@@ -13,10 +13,16 @@ struct ConversationView: View {
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
+                        if let errorMessage = viewModel.errorMessage {
+                            ErrorView(message: errorMessage)
+                        }
+
                         ForEach(viewModel.messages) { message in
                             MessageBubbleView(message: message)
                         }
@@ -78,10 +84,13 @@ struct ConversationView: View {
     }
 
     private var shouldShowThinking: Bool {
-        viewModel.agent?.status.isActive == true
+        viewModel.isLoading || viewModel.agent?.status.isActive == true
     }
 
     private var statusMessage: String {
+        if viewModel.isLoading {
+            return "Connecting"
+        }
         if viewModel.agent?.status == .creating {
             return "Setting up agent"
         }
