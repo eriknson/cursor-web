@@ -102,6 +102,7 @@ struct HomeView: View {
             .onSubmit {
                 hideKeyboard()
             }
+            .accessibilityLabel("Search agents")
     }
 
     private var content: some View {

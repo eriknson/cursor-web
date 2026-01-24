@@ -33,6 +33,7 @@ struct RepoPickerView: View {
         .disabled(isLoading)
         .accessibilityLabel("Repository picker")
         .accessibilityValue(displayName)
+        .accessibilityHint("Opens repository list")
         .sheet(isPresented: $isPresented) {
             NavigationStack {
                 List {

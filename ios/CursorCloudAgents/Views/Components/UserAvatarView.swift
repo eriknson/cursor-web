@@ -42,6 +42,7 @@ struct UserAvatarView: View {
                         .foregroundStyle(Theme.textSecondary)
                 )
                 .accessibilityLabel("Account menu")
+                .accessibilityHint("Opens account actions")
         }
         .tint(Theme.textSecondary)
     }
