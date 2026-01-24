@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ComposerView: View {
     var placeholder: String = "Ask Cursor to build, plan, fix anything"
@@ -83,6 +86,9 @@ struct ComposerView: View {
 
     private func submit() {
         guard !trimmedText.isEmpty else { return }
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
         onSubmit(trimmedText, selectedModel)
         text = ""
         isFocused = false
