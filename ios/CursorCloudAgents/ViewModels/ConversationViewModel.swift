@@ -40,6 +40,7 @@ final class ConversationViewModel {
         do {
             let conversation = try await apiClient.getConversation(agentId: agentId)
             mergeMessages(conversation)
+            resolvePendingFollowUp()
         } catch let error as CursorAPIError {
             if case .notFound = error {
                 // Conversation may not exist yet for new agents.
