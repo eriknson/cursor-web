@@ -33,7 +33,6 @@ struct HomeView: View {
                 .padding(.bottom, 80)
                 .contentShape(Rectangle())
                 .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
-                .animation(.easeInOut(duration: 0.2), value: viewModel.searchQuery)
 
                 composer
             }
