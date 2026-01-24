@@ -27,4 +27,4 @@ Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors t
 - App icon assets are currently placeholders; add your own icons inside `Resources/Assets.xcassets/AppIcon.appiconset`.
 - If you see empty conversations for new agents, wait a moment—the API may not have created the conversation yet.
 - Use the shared scheme in `ios/CursorCloudAgents.xcodeproj` for a preconfigured launch target.
-- When using All Repositories, selecting a specific repo is required to launch a new agent.
+- When using All Repositories, select a specific repo before launching a new agent.
