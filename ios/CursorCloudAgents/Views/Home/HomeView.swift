@@ -51,10 +51,15 @@ struct HomeView: View {
     private var header: some View {
         @Bindable var viewModel = viewModel
 
+        let selectionBinding = Binding<Repository?>(
+            get: { viewModel.selectedRepository },
+            set: { viewModel.selectRepository($0) }
+        )
+
         HStack {
             RepoPickerView(
                 repositories: viewModel.sortedRepositories,
-                selectedRepository: $viewModel.selectedRepository,
+                selectedRepository: selectionBinding,
                 isLoading: viewModel.isLoadingRepos,
                 showAllOption: true
             )
