@@ -54,6 +54,7 @@ struct AgentListView: View {
                 await onRefresh()
             }
         }
+        .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .accessibilityLabel("Agent list")
     }
