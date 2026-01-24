@@ -4,6 +4,8 @@ struct AgentRowView: View {
     let agent: Agent
 
     var body: some View {
+        let timeLabel = DateFormatters.relativeTime(from: agent.createdAt)
+
         HStack(alignment: .top, spacing: 12) {
             statusIcon
                 .frame(width: 20, height: 20)
@@ -14,7 +16,7 @@ struct AgentRowView: View {
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
 
-                Text("\(agent.model ?? "Composer 1") · \(DateFormatters.relativeTime(from: agent.createdAt))")
+                Text("\(agent.model ?? "Composer 1") · \(timeLabel)")
                     .font(.footnote)
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -25,7 +27,8 @@ struct AgentRowView: View {
         .padding(.horizontal, 14)
         .background(Color.clear)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(agent.name). \(statusLabel). \(timeLabel)")
     }
 
     private var statusIcon: some View {
@@ -51,6 +54,23 @@ struct AgentRowView: View {
             }
             return AnyView(Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Theme.textTertiary))
+        }
+    }
+
+    private var statusLabel: String {
+        switch agent.status {
+        case .creating:
+            return "Setting up"
+        case .running:
+            return "Running"
+        case .finished:
+            return "Finished"
+        case .error:
+            return "Error"
+        case .expired:
+            return "Expired"
+        case .stopped:
+            return "Stopped"
         }
     }
 }
