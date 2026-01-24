@@ -72,7 +72,7 @@ private struct CursorAvatar: View {
 private struct TypewriterText: View {
     let text: String
     let isActive: Bool
-    private let charactersPerSecond: Double = 50
+    private let charactersPerSecond: Double = 80
 
     @State private var displayedCount: Int = 0
     @State private var typingTask: Task<Void, Never>?
