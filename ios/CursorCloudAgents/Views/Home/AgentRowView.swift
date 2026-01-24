@@ -31,7 +31,10 @@ struct AgentRowView: View {
     private var statusIcon: some View {
         switch agent.status {
         case .creating, .running:
-            return AnyView(CursorLoaderView(size: 18))
+            return AnyView(Circle()
+                .fill(Theme.bgTertiary)
+                .frame(width: 18, height: 18)
+                .overlay(CursorLoaderView(size: 12)))
         case .error:
             return AnyView(Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(Theme.error))
