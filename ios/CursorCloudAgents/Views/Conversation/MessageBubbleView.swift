@@ -19,6 +19,7 @@ struct MessageBubbleView: View {
             Text(message.text)
                 .font(.subheadline)
                 .foregroundStyle(message.type == .userMessage ? Theme.textPrimary : Theme.textSecondary)
+                .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(message.type == .userMessage ? Theme.bgTertiary : Theme.bgQuaternary)
