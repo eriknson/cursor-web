@@ -61,10 +61,10 @@ struct ComposerView: View {
                 HStack {
                     ModelPickerView(selectedModel: $selectedModel)
                     Spacer()
-                    Text("\(trimmedText.count) / 1000")
+                    Text("\(trimmedText.count) / \(maxLength)")
                         .font(.caption)
                         .foregroundStyle(Theme.textQuaternary)
-                        .accessibilityLabel("Character count \(trimmedText.count) of 1000")
+                        .accessibilityLabel("Character count \(trimmedText.count) of \(maxLength)")
                 }
             }
         }
