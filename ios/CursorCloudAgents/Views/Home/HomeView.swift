@@ -19,6 +19,8 @@ struct HomeView: View {
     }
 
     var body: some View {
+        @Bindable var viewModel = viewModel
+
         return NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 16) {
