@@ -116,6 +116,7 @@ struct ConversationView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .safeAreaPadding(.bottom)
+                .opacity(viewModel.agent?.status.isTerminal == true ? 0.5 : 1)
             }
         }
         .background(Theme.bgMain)
