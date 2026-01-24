@@ -10,7 +10,7 @@ struct ComposerView: View {
     var onSubmit: (String, String) -> Void
 
     @State private var text: String = ""
-    @State private var selectedModel: String = modelOptions.first?.id ?? "composer-1"
+    @AppStorage("cursor.selectedModel") private var selectedModel: String = modelOptions.first?.id ?? "composer-1"
     @FocusState private var isFocused: Bool
     private let maxLength = 1000
 
