@@ -96,16 +96,13 @@ final class HomeViewModel {
         async let repositoriesTask = fetchRepositories()
         async let agentsTask = fetchAgents()
         _ = await (repositoriesTask, agentsTask)
-
-        if selectedRepository == nil,
-           UserDefaults.standard.string(forKey: lastSelectedRepoKey) != "__all__" {
-            selectedRepository = sortedRepositories.first
-        }
+        selectDefaultRepositoryIfNeeded()
     }
 
     func refreshAgents() async {
         errorMessage = nil
         await fetchAgents()
+        selectDefaultRepositoryIfNeeded()
     }
 
     func selectRepository(_ repository: Repository?) {
@@ -223,6 +220,13 @@ final class HomeViewModel {
             return "\(parts[parts.count - 2])/\(parts.last ?? "")"
         }
         return repository
+    }
+
+    private func selectDefaultRepositoryIfNeeded() {
+        if selectedRepository == nil,
+           UserDefaults.standard.string(forKey: lastSelectedRepoKey) != "__all__" {
+            selectedRepository = sortedRepositories.first
+        }
     }
 
     private func handleAuthFailure(_ error: Error) -> Bool {
