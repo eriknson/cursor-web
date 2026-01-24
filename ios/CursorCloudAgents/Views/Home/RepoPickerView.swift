@@ -52,6 +52,13 @@ struct RepoPickerView: View {
                     }
 
                     Section {
+                        if repositories.isEmpty {
+                            Text("No repositories found")
+                                .font(.footnote)
+                                .foregroundStyle(Theme.textQuaternary)
+                                .listRowBackground(Theme.bgMain)
+                        }
+
                         ForEach(repositories) { repo in
                             Button {
                                 selectedRepository = repo
