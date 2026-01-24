@@ -30,16 +30,15 @@ final class ConversationViewModel {
         }
 
         isLoading = true
+        defer { isLoading = false }
         do {
             let agent = try await apiClient.getAgent(id: agentId)
             self.agent = agent
         } catch {
             if handleAuthFailure(error) {
-                isLoading = false
                 return
             }
             errorMessage = error.localizedDescription
-            isLoading = false
             return
         }
 
@@ -58,8 +57,6 @@ final class ConversationViewModel {
             if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
-
-        isLoading = false
 
         if agent?.status.isActive == true {
             startPolling()
@@ -124,6 +121,7 @@ final class ConversationViewModel {
         guard !trimmed.isEmpty else { return }
 
         isSendingFollowUp = true
+        defer { isSendingFollowUp = false }
         pendingFollowUp = trimmed
         errorMessage = nil
 
@@ -134,12 +132,13 @@ final class ConversationViewModel {
                 startPolling()
             }
         } catch {
-            if handleAuthFailure(error) { return }
+            if handleAuthFailure(error) {
+                pendingFollowUp = nil
+                return
+            }
             errorMessage = error.localizedDescription
             pendingFollowUp = nil
         }
-
-        isSendingFollowUp = false
     }
 
     private func mergeMessages(_ newMessages: [Message]) {
@@ -161,6 +160,7 @@ final class ConversationViewModel {
 
     private func handleAuthFailure(_ error: Error) -> Bool {
         if let apiError = error as? CursorAPIError, case .invalidApiKey = apiError {
+            stopPolling()
             onAuthFailure?()
             return true
         }
