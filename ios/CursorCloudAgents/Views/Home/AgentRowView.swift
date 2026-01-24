@@ -25,6 +25,7 @@ struct AgentRowView: View {
         .padding(.horizontal, 14)
         .background(Color.clear)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 
     private var statusIcon: some View {
