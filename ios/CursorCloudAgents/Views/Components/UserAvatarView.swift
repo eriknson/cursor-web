@@ -21,6 +21,7 @@ struct UserAvatarView: View {
             Text(userEmail ?? "Not signed in")
                 .font(.footnote)
                 .foregroundStyle(Theme.textTertiary)
+                .accessibilityLabel(userEmail ?? "Not signed in")
 
             Divider()
 
