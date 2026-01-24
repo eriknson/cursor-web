@@ -97,6 +97,8 @@ struct HomeView: View {
     }
 
     private var content: some View {
+        @Bindable var viewModel = viewModel
+
         AgentListView(
             groupedAgents: viewModel.groupedAgents,
             isLoading: viewModel.isLoadingAgents,
@@ -108,6 +110,8 @@ struct HomeView: View {
     }
 
     private var composer: some View {
+        @Bindable var viewModel = viewModel
+
         ComposerView(
             placeholder: "Ask Cursor to build, plan, fix anything",
             isLoading: viewModel.isLaunchingAgent,
