@@ -19,6 +19,7 @@ final class AuthViewModel {
     }
 
     func loadStoredKey() async {
+        guard !isAuthenticated else { return }
         guard let storedKey = await keychain.getApiKey() else { return }
         await validateAndSaveKey(storedKey)
     }

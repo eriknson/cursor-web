@@ -98,6 +98,7 @@ final class ConversationViewModel {
             }
         } catch {
             errorMessage = error.localizedDescription
+            pendingFollowUp = nil
         }
 
         isSendingFollowUp = false
