@@ -161,6 +161,20 @@ final class MockCursorAPIClient: CursorAPIClientProtocol {
         messages.append(followUpMessage)
         messages.append(responseMessage)
         conversations[agentId] = messages
+
+        if let index = agents.firstIndex(where: { $0.id == agentId }) {
+            let agent = agents[index]
+            agents[index] = Agent(
+                id: agent.id,
+                name: agent.name,
+                status: .running,
+                source: agent.source,
+                target: agent.target,
+                summary: nil,
+                createdAt: agent.createdAt,
+                model: agent.model
+            )
+        }
     }
 
     func stopAgent(id: String) async throws {
