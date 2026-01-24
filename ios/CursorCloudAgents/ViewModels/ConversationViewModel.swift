@@ -31,18 +31,31 @@ final class ConversationViewModel {
         do {
             let agent = try await apiClient.getAgent(id: agentId)
             self.agent = agent
-            let conversation = try await apiClient.getConversation(agentId: agentId)
-            mergeMessages(conversation)
-            isLoading = false
-
-            if agent.status.isActive {
-                startPolling()
-            } else {
-                stopPolling()
-            }
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
+            return
+        }
+
+        do {
+            let conversation = try await apiClient.getConversation(agentId: agentId)
+            mergeMessages(conversation)
+        } catch let error as CursorAPIError {
+            if case .notFound = error {
+                // Conversation may not exist yet for new agents.
+            } else {
+                errorMessage = error.localizedDescription
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+
+        if agent?.status.isActive == true {
+            startPolling()
+        } else {
+            stopPolling()
         }
     }
 
@@ -73,10 +86,21 @@ final class ConversationViewModel {
         do {
             let agent = try await apiClient.getAgent(id: agentId)
             self.agent = agent
-            let conversation = try await apiClient.getConversation(agentId: agentId)
-            mergeMessages(conversation)
-            resolvePendingFollowUp()
-            errorMessage = nil
+            do {
+                let conversation = try await apiClient.getConversation(agentId: agentId)
+                mergeMessages(conversation)
+                resolvePendingFollowUp()
+                errorMessage = nil
+            } catch let error as CursorAPIError {
+                if case .notFound = error {
+                    // Conversation not ready; keep polling.
+                    errorMessage = nil
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
