@@ -38,6 +38,7 @@ struct ComposerView: View {
                             text = String(newValue.prefix(maxLength))
                         }
                     }
+                    .accessibilityHint("Enter a prompt for Cursor")
 
                 Button {
                     submit()
