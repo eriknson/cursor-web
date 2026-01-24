@@ -35,7 +35,8 @@ struct ConversationView: View {
                             if let pending = viewModel.pendingFollowUp {
                                 MessageBubbleView(
                                     message: Message(id: "pending-\(pending)", type: .userMessage, text: pending),
-                                    maxWidth: bubbleWidth
+                                    maxWidth: bubbleWidth,
+                                    isPending: true
                                 )
                             }
 
