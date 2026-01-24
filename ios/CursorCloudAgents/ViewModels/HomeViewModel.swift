@@ -232,6 +232,8 @@ final class HomeViewModel {
 
     private func handleAuthFailure(_ error: Error) -> Bool {
         if let apiError = error as? CursorAPIError, case .invalidApiKey = apiError {
+            isLoadingRepos = false
+            isLoadingAgents = false
             onAuthFailure?()
             return true
         }
