@@ -10,9 +10,10 @@ final class HomeViewModel {
     var searchQuery: String = ""
     var isLoadingAgents: Bool = false
     var isLoadingRepos: Bool = false
+    var isLaunchingAgent: Bool = false
     var errorMessage: String?
 
-    private let apiClient: CursorAPIClientProtocol
+    let apiClient: CursorAPIClientProtocol
 
     init(apiClient: CursorAPIClientProtocol) {
         self.apiClient = apiClient
@@ -76,6 +77,29 @@ final class HomeViewModel {
 
     func selectRepository(_ repository: Repository?) {
         selectedRepository = repository
+    }
+
+    func launchAgent(prompt: String, model: String) async {
+        guard let repository = selectedRepository ?? repositories.first else {
+            errorMessage = "Select a repository to launch an agent."
+            return
+        }
+
+        isLaunchingAgent = true
+        errorMessage = nil
+
+        do {
+            let agent = try await apiClient.launchAgent(
+                prompt: prompt,
+                repository: repository.repository,
+                model: model
+            )
+            agents.insert(agent, at: 0)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLaunchingAgent = false
     }
 
     private func fetchRepositories() async {
