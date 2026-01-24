@@ -1,5 +1,8 @@
 import SwiftUI
 import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ConversationView: View {
     let agent: Agent
@@ -66,6 +69,10 @@ struct ConversationView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: viewModel.messages.count) { _, _ in
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -122,6 +129,12 @@ struct ConversationView: View {
         .onDisappear {
             viewModel.stopPolling()
         }
+    }
+
+    private func hideKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
     }
 
     private var shouldShowThinking: Bool {
