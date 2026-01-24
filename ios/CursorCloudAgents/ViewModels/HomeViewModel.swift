@@ -146,6 +146,13 @@ final class HomeViewModel {
         isLoadingRepos = true
         do {
             repositories = try await apiClient.listRepositories()
+            if let selected = selectedRepository,
+               !repositories.contains(where: { $0.repository == selected.repository }) {
+                selectedRepository = nil
+                if UserDefaults.standard.string(forKey: lastSelectedRepoKey) != "__all__" {
+                    UserDefaults.standard.removeObject(forKey: lastSelectedRepoKey)
+                }
+            }
             if selectedRepository == nil {
                 if let stored = UserDefaults.standard.string(forKey: lastSelectedRepoKey) {
                     if stored == "__all__" {
