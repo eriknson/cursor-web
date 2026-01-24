@@ -6,6 +6,7 @@ struct ConversationView: View {
     let apiClient: CursorAPIClientProtocol
 
     @State private var viewModel: ConversationViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init(agent: Agent, apiClient: CursorAPIClientProtocol) {
         self.agent = agent
@@ -90,6 +91,13 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadConversation(agentId: agent.id)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active, viewModel.agent?.status.isActive == true {
+                viewModel.startPolling()
+            } else if newPhase != .active {
+                viewModel.stopPolling()
+            }
         }
         .onDisappear {
             viewModel.stopPolling()
