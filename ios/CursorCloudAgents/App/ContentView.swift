@@ -18,7 +18,7 @@ struct ContentView: View {
                 LoginView(viewModel: authViewModel)
             }
         }
-        .accentColor(Theme.accent)
+        .tint(Theme.accent)
         .task {
             await authViewModel.loadStoredKey()
         }
