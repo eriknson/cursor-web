@@ -24,6 +24,10 @@ struct ComposerView: View {
                     .textInputAutocapitalization(.sentences)
                     .autocorrectionDisabled()
                     .lineLimit(isExpanded ? 4 : 1)
+                    .submitLabel(.send)
+                    .onSubmit {
+                        submit()
+                    }
                     .disabled(disabled || isLoading)
 
                 Button {
