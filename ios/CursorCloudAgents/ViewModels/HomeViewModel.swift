@@ -117,7 +117,7 @@ final class HomeViewModel {
         do {
             repositories = try await apiClient.listRepositories()
             if selectedRepository == nil {
-                selectedRepository = repositories.first
+                selectedRepository = sortedRepositories.first
             }
         } catch {
             errorMessage = error.localizedDescription
