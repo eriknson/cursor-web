@@ -144,6 +144,7 @@ final class HomeViewModel {
 
     private func fetchRepositories() async {
         isLoadingRepos = true
+        defer { isLoadingRepos = false }
         do {
             repositories = try await apiClient.listRepositories()
             if let selected = selectedRepository,
@@ -166,18 +167,17 @@ final class HomeViewModel {
             if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
-        isLoadingRepos = false
     }
 
     private func fetchAgents() async {
         isLoadingAgents = true
+        defer { isLoadingAgents = false }
         do {
             agents = try await apiClient.listAgents(limit: 50)
         } catch {
             if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
-        isLoadingAgents = false
     }
 
     private func agentMatchesRepository(agent: Agent, repository: Repository) -> Bool {
