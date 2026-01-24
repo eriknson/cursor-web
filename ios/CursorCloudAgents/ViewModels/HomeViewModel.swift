@@ -20,6 +20,7 @@ final class HomeViewModel {
     var errorMessage: String?
 
     let apiClient: CursorAPIClientProtocol
+    private let lastSelectedRepoKey = "cursor.lastSelectedRepo"
 
     init(apiClient: CursorAPIClientProtocol) {
         self.apiClient = apiClient
@@ -103,6 +104,11 @@ final class HomeViewModel {
 
     func selectRepository(_ repository: Repository?) {
         selectedRepository = repository
+        if let repository {
+            UserDefaults.standard.set(repository.repository, forKey: lastSelectedRepoKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: lastSelectedRepoKey)
+        }
     }
 
     func launchAgent(prompt: String, model: String) async -> Agent? {
@@ -136,7 +142,12 @@ final class HomeViewModel {
         do {
             repositories = try await apiClient.listRepositories()
             if selectedRepository == nil {
-                selectedRepository = sortedRepositories.first
+                if let stored = UserDefaults.standard.string(forKey: lastSelectedRepoKey),
+                   let match = repositories.first(where: { $0.repository == stored }) {
+                    selectedRepository = match
+                } else {
+                    selectedRepository = sortedRepositories.first
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
