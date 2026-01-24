@@ -91,6 +91,9 @@ struct HomeView: View {
             )
             .foregroundStyle(Theme.textPrimary)
             .submitLabel(.search)
+            .onSubmit {
+                hideKeyboard()
+            }
     }
 
     private var content: some View {
