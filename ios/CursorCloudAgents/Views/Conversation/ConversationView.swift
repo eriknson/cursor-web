@@ -109,7 +109,7 @@ struct ConversationView: View {
                 ComposerView(
                     placeholder: "Add a task for Cursor to do",
                     isLoading: viewModel.isSendingFollowUp,
-                    disabled: viewModel.agent == nil
+                    disabled: viewModel.agent == nil || viewModel.agent?.status.isTerminal == true
                 ) { text, _ in
                     Task { await viewModel.sendFollowUp(text) }
                 }
