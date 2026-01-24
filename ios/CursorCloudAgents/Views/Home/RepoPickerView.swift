@@ -76,7 +76,7 @@ struct RepoPickerView: View {
                                         Text(repo.owner)
                                             .font(.footnote)
                                             .foregroundStyle(Theme.textTertiary)
-                                    .accessibilityHidden(true)
+                                            .accessibilityHidden(true)
                                     }
                                     Spacer()
                                     if let pushedAt = repo.pushedAt {
