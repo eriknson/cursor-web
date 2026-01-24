@@ -65,28 +65,7 @@ struct HomeView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 80)
 
-                ComposerView(
-                    placeholder: "Ask Cursor to build, plan, fix anything",
-                    isLoading: viewModel.isLaunchingAgent,
-                    disabled: viewModel.selectedRepository == nil && viewModel.repositories.isEmpty
-                ) { prompt, model in
-                    Task {
-                        if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
-                            navigationPath.append(agent)
-                        }
-                    }
-                }
-                .shadow(color: Theme.bgMain.opacity(0.4), radius: 20, x: 0, y: -4)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-                .background(
-                    LinearGradient(
-                        colors: [Theme.bgMain.opacity(0.9), Theme.bgMain.opacity(0)],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                    .allowsHitTesting(false)
-                )
+                composer
             }
             .background(Theme.bgMain)
             .task { await viewModel.loadInitialData() }
@@ -94,6 +73,31 @@ struct HomeView: View {
                 ConversationView(agent: agent, apiClient: viewModel.apiClient)
             }
         }
+    }
+
+    private var composer: some View {
+        ComposerView(
+            placeholder: "Ask Cursor to build, plan, fix anything",
+            isLoading: viewModel.isLaunchingAgent,
+            disabled: viewModel.selectedRepository == nil && viewModel.repositories.isEmpty
+        ) { prompt, model in
+            Task {
+                if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
+                    navigationPath.append(agent)
+                }
+            }
+        }
+        .shadow(color: Theme.bgMain.opacity(0.4), radius: 20, x: 0, y: -4)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .background(
+            LinearGradient(
+                colors: [Theme.bgMain.opacity(0.9), Theme.bgMain.opacity(0)],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .allowsHitTesting(false)
+        )
     }
 
     private var emptyStateMessage: String {
