@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 struct ContentView: View {
     @Environment(AuthViewModel.self) private var authViewModel

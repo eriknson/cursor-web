@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 struct LoginView: View {
     @Bindable var viewModel: AuthViewModel

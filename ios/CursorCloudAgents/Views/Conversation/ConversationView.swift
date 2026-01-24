@@ -1,4 +1,5 @@
 import SwiftUI
+import Observation
 
 struct ConversationView: View {
     let agent: Agent

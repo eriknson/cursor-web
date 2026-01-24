@@ -21,6 +21,8 @@ struct ComposerView: View {
                     .font(.body)
                     .focused($isFocused)
                     .foregroundStyle(Theme.textPrimary)
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled()
                     .lineLimit(isExpanded ? 4 : 1)
                     .disabled(disabled || isLoading)
 
