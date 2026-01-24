@@ -60,14 +60,17 @@ struct ComposerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var isSendEnabled: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !disabled && !isLoading
+        !trimmedText.isEmpty && !disabled && !isLoading
     }
 
     private func submit() {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        onSubmit(trimmed, selectedModel)
+        guard !trimmedText.isEmpty else { return }
+        onSubmit(trimmedText, selectedModel)
         text = ""
         isFocused = false
     }

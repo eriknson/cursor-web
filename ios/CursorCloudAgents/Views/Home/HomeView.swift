@@ -73,6 +73,7 @@ struct HomeView: View {
                         }
                     }
                 }
+                .shadow(color: Theme.bgMain.opacity(0.4), radius: 20, x: 0, y: -4)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
                 .background(
