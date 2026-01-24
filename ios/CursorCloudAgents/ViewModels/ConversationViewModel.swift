@@ -26,6 +26,7 @@ final class ConversationViewModel {
             messages = []
             errorMessage = nil
             agent = nil
+            pendingFollowUp = nil
         }
 
         isLoading = true
