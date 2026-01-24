@@ -58,7 +58,24 @@ final class HomeViewModel {
     }
 
     var sortedRepositories: [Repository] {
-        repositories.sorted { lhs, rhs in
+        let lastUsedMap = repositoryLastUsedMap()
+        return repositories.sorted { lhs, rhs in
+            let lhsKey = normalizeRepoKey(lhs.repository)
+            let rhsKey = normalizeRepoKey(rhs.repository)
+            let lhsLastUsed = lastUsedMap[lhsKey] ?? .distantPast
+            let rhsLastUsed = lastUsedMap[rhsKey] ?? .distantPast
+
+            let lhsHasActivity = lhsLastUsed != .distantPast
+            let rhsHasActivity = rhsLastUsed != .distantPast
+
+            if lhsHasActivity != rhsHasActivity {
+                return lhsHasActivity
+            }
+
+            if lhsLastUsed != rhsLastUsed {
+                return lhsLastUsed > rhsLastUsed
+            }
+
             switch (lhs.pushedAt, rhs.pushedAt) {
             case let (l?, r?):
                 return l > r
@@ -162,5 +179,28 @@ final class HomeViewModel {
             }
         }
         return (normalized, name, ownerAndName)
+    }
+
+    private func repositoryLastUsedMap() -> [String: Date] {
+        var map: [String: Date] = [:]
+        for agent in agents {
+            let key = normalizeRepoKey(agent.source.repository)
+            let existing = map[key] ?? .distantPast
+            if agent.createdAt > existing {
+                map[key] = agent.createdAt
+            }
+        }
+        return map
+    }
+
+    private func normalizeRepoKey(_ repository: String) -> String {
+        let parts = repository.split(separator: "/").map(String.init)
+        if parts.count >= 3, parts[0].contains("github") {
+            return "\(parts[1])/\(parts[2])"
+        }
+        if parts.count >= 2 {
+            return "\(parts[parts.count - 2])/\(parts.last ?? "")"
+        }
+        return repository
     }
 }
