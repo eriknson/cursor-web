@@ -23,6 +23,13 @@ struct MessageBubbleView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: maxWidth, alignment: message.type == .userMessage ? .trailing : .leading)
                 .opacity(isPending ? 0.7 : 1)
+                .contextMenu {
+                    Button("Copy") {
+                        #if canImport(UIKit)
+                        UIPasteboard.general.string = message.text
+                        #endif
+                    }
+                }
 
             if message.type == .assistantMessage {
                 Spacer()
