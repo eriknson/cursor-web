@@ -65,12 +65,15 @@ struct HomeView: View {
             )
             Spacer()
             if let email = userInfo?.userEmail {
-                Text(email)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .accessibilityLabel("Signed in as \(email)")
+                ViewThatFits(in: .horizontal) {
+                    Text(email)
+                        .font(.footnote)
+                        .foregroundStyle(Theme.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityLabel("Signed in as \(email)")
+                    EmptyView()
+                }
             }
             UserAvatarView(
                 userEmail: userInfo?.userEmail,
