@@ -10,6 +10,7 @@ Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors t
 - Log in using your Cursor API key (stored securely in Keychain).
 - Browse recent agent runs grouped by date and filtered by repository.
 - Tap an agent to view the conversation and follow up with new prompts.
+- Use the repo picker to switch between a specific repo or All Repositories.
 
 ## Running (Mock Data)
 1. Open `ios/CursorCloudAgents.xcodeproj` in Xcode.
