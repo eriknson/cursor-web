@@ -120,14 +120,23 @@ struct HomeView: View {
     private var composer: some View {
         @Bindable var viewModel = viewModel
 
-        ComposerView(
-            placeholder: "Ask Cursor to build, plan, fix anything",
-            isLoading: viewModel.isLaunchingAgent,
-            disabled: viewModel.selectedRepository == nil
-        ) { prompt, model in
-            Task {
-                if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
-                    navigationPath.append(agent)
+        VStack(alignment: .leading, spacing: 6) {
+            if viewModel.selectedRepository == nil {
+                Text("Select a repository to launch an agent")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textQuaternary)
+                    .padding(.horizontal, 4)
+            }
+
+            ComposerView(
+                placeholder: "Ask Cursor to build, plan, fix anything",
+                isLoading: viewModel.isLaunchingAgent,
+                disabled: viewModel.selectedRepository == nil
+            ) { prompt, model in
+                Task {
+                    if let agent = await viewModel.launchAgent(prompt: prompt, model: model) {
+                        navigationPath.append(agent)
+                    }
                 }
             }
         }
