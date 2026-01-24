@@ -90,12 +90,14 @@ final class HomeViewModel {
     }
 
     func loadInitialData() async {
+        errorMessage = nil
         async let repositoriesTask = fetchRepositories()
         async let agentsTask = fetchAgents()
         _ = await (repositoriesTask, agentsTask)
     }
 
     func refreshAgents() async {
+        errorMessage = nil
         await fetchAgents()
     }
 
@@ -131,7 +133,6 @@ final class HomeViewModel {
 
     private func fetchRepositories() async {
         isLoadingRepos = true
-        errorMessage = nil
         do {
             repositories = try await apiClient.listRepositories()
             if selectedRepository == nil {
@@ -145,7 +146,6 @@ final class HomeViewModel {
 
     private func fetchAgents() async {
         isLoadingAgents = true
-        errorMessage = nil
         do {
             agents = try await apiClient.listAgents(limit: 50)
         } catch {
