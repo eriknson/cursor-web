@@ -208,6 +208,21 @@ final class MockCursorAPIClient: CursorAPIClientProtocol {
         for index in agents.indices {
             let agent = agents[index]
             guard agent.status == .running else { continue }
+
+            if var thread = conversations[agent.id] {
+                let hasAssistant = thread.contains { $0.type == .assistantMessage }
+                if !hasAssistant, now.timeIntervalSince(agent.createdAt) > 20 {
+                    thread.append(
+                        Message(
+                            id: UUID().uuidString,
+                            type: .assistantMessage,
+                            text: "Mock response: I’m working through the repo and will summarize shortly."
+                        )
+                    )
+                    conversations[agent.id] = thread
+                }
+            }
+
             if now.timeIntervalSince(agent.createdAt) > 90 {
                 let summary = agent.summary ?? "Completed the task and prepared a summary of the updates."
                 agents[index] = Agent(
