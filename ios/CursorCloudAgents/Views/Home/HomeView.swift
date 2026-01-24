@@ -8,7 +8,9 @@ struct HomeView: View {
     let onLogout: () -> Void
 
     init(apiClient: CursorAPIClientProtocol, userInfo: UserInfo?, onLogout: @escaping () -> Void) {
-        _viewModel = State(initialValue: HomeViewModel(apiClient: apiClient))
+        let viewModel = HomeViewModel(apiClient: apiClient)
+        viewModel.onAuthFailure = onLogout
+        _viewModel = State(initialValue: viewModel)
         self.userInfo = userInfo
         self.onLogout = onLogout
     }
@@ -70,7 +72,7 @@ struct HomeView: View {
             .background(Theme.bgMain)
             .task { await viewModel.loadInitialData() }
             .navigationDestination(for: Agent.self) { agent in
-                ConversationView(agent: agent, apiClient: viewModel.apiClient)
+                ConversationView(agent: agent, apiClient: viewModel.apiClient, onAuthFailure: onLogout)
             }
         }
     }

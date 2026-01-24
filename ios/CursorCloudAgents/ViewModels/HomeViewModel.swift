@@ -20,6 +20,7 @@ final class HomeViewModel {
     var errorMessage: String?
 
     let apiClient: CursorAPIClientProtocol
+    var onAuthFailure: (() -> Void)?
     private let lastSelectedRepoKey = "cursor.lastSelectedRepo"
 
     init(apiClient: CursorAPIClientProtocol) {
@@ -130,6 +131,7 @@ final class HomeViewModel {
             isLaunchingAgent = false
             return agent
         } catch {
+            if handleAuthFailure(error) { return nil }
             errorMessage = error.localizedDescription
         }
 
@@ -150,6 +152,7 @@ final class HomeViewModel {
                 }
             }
         } catch {
+            if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
         isLoadingRepos = false
@@ -160,6 +163,7 @@ final class HomeViewModel {
         do {
             agents = try await apiClient.listAgents(limit: 50)
         } catch {
+            if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
         isLoadingAgents = false
@@ -213,5 +217,13 @@ final class HomeViewModel {
             return "\(parts[parts.count - 2])/\(parts.last ?? "")"
         }
         return repository
+    }
+
+    private func handleAuthFailure(_ error: Error) -> Bool {
+        if let apiError = error as? CursorAPIError, case .invalidApiKey = apiError {
+            onAuthFailure?()
+            return true
+        }
+        return false
     }
 }

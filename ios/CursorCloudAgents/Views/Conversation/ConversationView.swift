@@ -4,14 +4,18 @@ import Observation
 struct ConversationView: View {
     let agent: Agent
     let apiClient: CursorAPIClientProtocol
+    let onAuthFailure: (() -> Void)?
 
     @State private var viewModel: ConversationViewModel
     @Environment(\.scenePhase) private var scenePhase
 
-    init(agent: Agent, apiClient: CursorAPIClientProtocol) {
+    init(agent: Agent, apiClient: CursorAPIClientProtocol, onAuthFailure: (() -> Void)? = nil) {
         self.agent = agent
         self.apiClient = apiClient
-        _viewModel = State(initialValue: ConversationViewModel(apiClient: apiClient))
+        let viewModel = ConversationViewModel(apiClient: apiClient)
+        viewModel.onAuthFailure = onAuthFailure
+        _viewModel = State(initialValue: viewModel)
+        self.onAuthFailure = onAuthFailure
     }
 
     var body: some View {

@@ -10,6 +10,7 @@ final class ConversationViewModel {
     var errorMessage: String?
     var pendingFollowUp: String?
     var isSendingFollowUp: Bool = false
+    var onAuthFailure: (() -> Void)?
 
     private let apiClient: CursorAPIClientProtocol
     private var pollingTask: Task<Void, Never>?
@@ -32,6 +33,10 @@ final class ConversationViewModel {
             let agent = try await apiClient.getAgent(id: agentId)
             self.agent = agent
         } catch {
+            if handleAuthFailure(error) {
+                isLoading = false
+                return
+            }
             errorMessage = error.localizedDescription
             isLoading = false
             return
@@ -45,9 +50,11 @@ final class ConversationViewModel {
             if case .notFound = error {
                 // Conversation may not exist yet for new agents.
             } else {
+                if handleAuthFailure(error) { return }
                 errorMessage = error.localizedDescription
             }
         } catch {
+            if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
 
@@ -97,12 +104,15 @@ final class ConversationViewModel {
                     // Conversation not ready; keep polling.
                     errorMessage = nil
                 } else {
+                    if handleAuthFailure(error) { return }
                     errorMessage = error.localizedDescription
                 }
             } catch {
+                if handleAuthFailure(error) { return }
                 errorMessage = error.localizedDescription
             }
         } catch {
+            if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -123,6 +133,7 @@ final class ConversationViewModel {
                 startPolling()
             }
         } catch {
+            if handleAuthFailure(error) { return }
             errorMessage = error.localizedDescription
             pendingFollowUp = nil
         }
@@ -145,5 +156,13 @@ final class ConversationViewModel {
         if messages.contains(where: { $0.type == .userMessage && $0.text == pending }) {
             pendingFollowUp = nil
         }
+    }
+
+    private func handleAuthFailure(_ error: Error) -> Bool {
+        if let apiError = error as? CursorAPIError, case .invalidApiKey = apiError {
+            onAuthFailure?()
+            return true
+        }
+        return false
     }
 }
