@@ -42,8 +42,15 @@ struct ConversationView: View {
                                 )
                             }
 
+                            let lastAssistantId = viewModel.messages.last(where: { $0.type == .assistantMessage })?.id
+
                             ForEach(viewModel.messages) { message in
-                                MessageBubbleView(message: message, maxWidth: bubbleWidth)
+                                let shouldAnimate = viewModel.agent?.status.isActive == true && message.id == lastAssistantId
+                                MessageBubbleView(
+                                    message: message,
+                                    maxWidth: bubbleWidth,
+                                    animate: shouldAnimate
+                                )
                             }
 
                             if let pending = viewModel.pendingFollowUp {

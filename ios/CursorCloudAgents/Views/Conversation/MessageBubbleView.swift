@@ -7,6 +7,7 @@ struct MessageBubbleView: View {
     let message: Message
     let maxWidth: CGFloat
     var isPending: Bool = false
+    var animate: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -16,7 +17,7 @@ struct MessageBubbleView: View {
                 Spacer()
             }
 
-            Text(message.text)
+            bubbleText
                 .font(.subheadline)
                 .foregroundStyle(message.type == .userMessage ? Theme.textPrimary : Theme.textSecondary)
                 .textSelection(.enabled)
@@ -43,6 +44,17 @@ struct MessageBubbleView: View {
     }
 }
 
+private extension MessageBubbleView {
+    @ViewBuilder
+    var bubbleText: some View {
+        if message.type == .assistantMessage {
+            TypewriterText(text: message.text, isActive: animate)
+        } else {
+            Text(message.text)
+        }
+    }
+}
+
 private struct CursorAvatar: View {
     var body: some View {
         Circle()
@@ -54,5 +66,62 @@ private struct CursorAvatar: View {
                     .foregroundStyle(Theme.textSecondary)
             )
             .padding(.top, 2)
+    }
+}
+
+private struct TypewriterText: View {
+    let text: String
+    let isActive: Bool
+    private let charactersPerSecond: Double = 50
+
+    @State private var displayedCount: Int = 0
+    @State private var typingTask: Task<Void, Never>?
+
+    var body: some View {
+        Text(String(text.prefix(displayedCount)))
+            .onAppear {
+                syncDisplay()
+            }
+            .onChange(of: text) { _, _ in
+                syncDisplay()
+            }
+            .onChange(of: isActive) { _, _ in
+                syncDisplay()
+            }
+            .onDisappear {
+                typingTask?.cancel()
+            }
+    }
+
+    private func syncDisplay() {
+        typingTask?.cancel()
+
+        guard isActive else {
+            displayedCount = text.count
+            return
+        }
+
+        if displayedCount > text.count {
+            displayedCount = text.count
+            return
+        }
+
+        if displayedCount < text.count {
+            startTyping(from: displayedCount)
+        }
+    }
+
+    private func startTyping(from start: Int) {
+        typingTask = Task {
+            var count = start
+            let delay = UInt64(1_000_000_000 / charactersPerSecond)
+            while count < text.count, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: delay)
+                count += 1
+                await MainActor.run {
+                    displayedCount = min(count, text.count)
+                }
+            }
+        }
     }
 }
