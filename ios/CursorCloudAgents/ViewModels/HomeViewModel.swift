@@ -100,7 +100,6 @@ final class HomeViewModel {
     }
 
     func refreshAgents() async {
-        errorMessage = nil
         await fetchAgents()
         selectDefaultRepositoryIfNeeded()
     }
