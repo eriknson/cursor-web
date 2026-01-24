@@ -139,9 +139,9 @@ struct ConversationView: View {
     }
 
     private var initialPromptText: String? {
-        guard !viewModel.messages.contains(where: { $0.type == .userMessage }) else { return nil }
-        let name = viewModel.agent?.name ?? agent.name
-        return name.isEmpty ? nil : name
+        guard viewModel.messages.first(where: { $0.type == .userMessage }) == nil else { return nil }
+        guard !agent.name.isEmpty else { return nil }
+        return agent.name
     }
 
     private var showSummary: Bool {
