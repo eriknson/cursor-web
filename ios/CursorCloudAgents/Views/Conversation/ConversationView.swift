@@ -45,6 +45,13 @@ struct ConversationView: View {
                                 )
                             }
 
+                            if showEmptyState {
+                                Text("No messages yet")
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.textQuaternary)
+                                    .padding(.horizontal, 4)
+                            }
+
                             let lastAssistantId = viewModel.messages.last(where: { $0.type == .assistantMessage })?.id
 
                             ForEach(viewModel.messages) { message in
@@ -184,6 +191,10 @@ struct ConversationView: View {
 
     private var showSummary: Bool {
         viewModel.agent?.status.isTerminal == true && viewModel.agent?.summary != nil
+    }
+
+    private var showEmptyState: Bool {
+        viewModel.messages.isEmpty && !shouldShowThinking && !showSummary
     }
 
     private var repoDisplayName: String? {
