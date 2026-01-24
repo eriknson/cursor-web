@@ -18,7 +18,29 @@ struct HomeView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
         
-        let header = HStack {
+        return NavigationStack(path: $navigationPath) {
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 16) {
+                    header
+                    searchBar
+                    content
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 80)
+
+                composer
+            }
+            .background(Theme.bgMain)
+            .task { await viewModel.loadInitialData() }
+            .navigationDestination(for: Agent.self) { agent in
+                ConversationView(agent: agent, apiClient: viewModel.apiClient, onAuthFailure: onLogout)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
             RepoPickerView(
                 repositories: viewModel.sortedRepositories,
                 selectedRepository: $viewModel.selectedRepository,
@@ -40,8 +62,10 @@ struct HomeView: View {
                 onLogout: onLogout
             )
         }
+    }
 
-        let searchBar = TextField("Search agents...", text: $viewModel.searchQuery)
+    private var searchBar: some View {
+        TextField("Search agents...", text: $viewModel.searchQuery)
             .textFieldStyle(.plain)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -54,34 +78,16 @@ struct HomeView: View {
             )
             .foregroundStyle(Theme.textPrimary)
             .submitLabel(.search)
+    }
 
-        let content = AgentListView(
+    private var content: some View {
+        AgentListView(
             groupedAgents: viewModel.groupedAgents,
             isLoading: viewModel.isLoadingAgents,
             errorMessage: viewModel.errorMessage,
             emptyMessage: emptyStateMessage
         ) {
             await viewModel.refreshAgents()
-        }
-
-        return NavigationStack(path: $navigationPath) {
-            ZStack(alignment: .bottom) {
-                VStack(spacing: 16) {
-                    header
-                    searchBar
-                    content
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 80)
-
-                composer
-            }
-            .background(Theme.bgMain)
-            .task { await viewModel.loadInitialData() }
-            .navigationDestination(for: Agent.self) { agent in
-                ConversationView(agent: agent, apiClient: viewModel.apiClient, onAuthFailure: onLogout)
-            }
         }
     }
 
