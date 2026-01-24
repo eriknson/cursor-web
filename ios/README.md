@@ -7,7 +7,7 @@ Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors t
 - iOS 17+ simulator or device
 
 ## Running (Mock Data)
-1. Open `CursorCloudAgents` in Xcode.
+1. Open `ios/CursorCloudAgents.xcodeproj` in Xcode.
 2. Set the environment variable `USE_MOCK_API=1` on the scheme.
 3. Build and run on a simulator.
 
