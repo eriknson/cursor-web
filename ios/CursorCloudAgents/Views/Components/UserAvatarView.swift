@@ -44,5 +44,6 @@ struct UserAvatarView: View {
                 )
                 .accessibilityLabel("Account menu")
         }
+        .tint(Theme.textSecondary)
     }
 }

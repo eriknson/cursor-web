@@ -67,5 +67,6 @@ struct ComposerView: View {
         guard !trimmed.isEmpty else { return }
         onSubmit(trimmed, selectedModel)
         text = ""
+        isFocused = false
     }
 }
