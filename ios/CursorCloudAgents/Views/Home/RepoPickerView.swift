@@ -52,6 +52,7 @@ struct RepoPickerView: View {
                             }
                         }
                         .listRowBackground(Theme.bgMain)
+                        .accessibilityLabel("All Repositories")
                     }
 
                     Section {
@@ -90,6 +91,7 @@ struct RepoPickerView: View {
                                 }
                             }
                             .listRowBackground(Theme.bgMain)
+                            .accessibilityLabel("\(repo.owner)/\(repo.name)")
                         }
                     } header: {
                         Text("Repositories")
