@@ -9,7 +9,10 @@ struct RepoPickerView: View {
     @State private var isPresented = false
 
     private var displayName: String {
-        selectedRepository?.name ?? "All Repositories"
+        if let selectedRepository {
+            return selectedRepository.name
+        }
+        return showAllOption ? "All Repositories" : "Select repo"
     }
 
     var body: some View {
