@@ -6,7 +6,7 @@ struct CursorLoaderView: View {
     @State private var isAnimating = false
 
     var body: some View {
-        Image(systemName: "cube.transparent")
+        Image(systemName: "cube")
             .font(.system(size: size, weight: .regular))
             .foregroundStyle(Theme.textSecondary)
             .opacity(loop ? (isAnimating ? 1 : 0.4) : 1)

@@ -9,7 +9,7 @@ struct ThinkingIndicatorView: View {
                 .fill(Theme.bgTertiary)
                 .frame(width: 28, height: 28)
                 .overlay(
-                    Image(systemName: "cube.transparent")
+                    Image(systemName: "cube")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textSecondary)
                 )

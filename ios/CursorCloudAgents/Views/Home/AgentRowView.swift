@@ -42,7 +42,7 @@ struct AgentRowView: View {
                 .foregroundStyle(Theme.textTertiary))
         case .finished:
             if agent.target.prUrl != nil {
-                return AnyView(Image(systemName: "arrow.triangle.pull")
+                return AnyView(Image(systemName: "arrow.triangle.branch")
                     .foregroundStyle(Theme.textTertiary))
             }
             return AnyView(Image(systemName: "checkmark.circle.fill")

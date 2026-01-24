@@ -18,7 +18,8 @@ struct MessageBubbleView: View {
                 .padding(.vertical, 10)
                 .background(message.type == .userMessage ? Theme.bgTertiary : Theme.bgQuaternary)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .frame(maxWidth: .infinity, alignment: message.type == .userMessage ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.7, alignment: message.type == .userMessage ? .trailing : .leading)
 
             if message.type == .assistantMessage {
                 Spacer()
@@ -33,7 +34,7 @@ private struct CursorAvatar: View {
             .fill(Theme.bgTertiary)
             .frame(width: 28, height: 28)
             .overlay(
-                Image(systemName: "cube.transparent")
+                    Image(systemName: "cube")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(Theme.textSecondary)
             )

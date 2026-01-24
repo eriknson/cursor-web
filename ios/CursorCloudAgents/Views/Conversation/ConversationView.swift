@@ -46,6 +46,11 @@ struct ConversationView: View {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
+                .onChange(of: viewModel.pendingFollowUp) { _, _ in
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
                 .onAppear {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
@@ -93,7 +98,7 @@ struct ConversationView: View {
                 .fill(Theme.bgTertiary)
                 .frame(width: 28, height: 28)
                 .overlay(
-                    Image(systemName: "cube.transparent")
+                    Image(systemName: "cube")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Theme.textSecondary)
                 )

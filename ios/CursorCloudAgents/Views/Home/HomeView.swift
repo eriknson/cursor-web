@@ -12,7 +12,43 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        @Bindable var viewModel = viewModel
+        
+        let header = HStack {
+            RepoPickerView(
+                repositories: viewModel.sortedRepositories,
+                selectedRepository: $viewModel.selectedRepository,
+                isLoading: viewModel.isLoadingRepos
+            )
+            Spacer()
+            UserAvatarView(
+                userEmail: userInfo?.userEmail,
+                userName: userInfo?.apiKeyName,
+                onLogout: onLogout
+            )
+        }
+
+        let searchBar = TextField("Search agents...", text: $viewModel.searchQuery)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.bgCard)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.borderSecondary, lineWidth: 1)
+            )
+            .foregroundStyle(Theme.textPrimary)
+
+        let content = AgentListView(
+            groupedAgents: viewModel.groupedAgents,
+            isLoading: viewModel.isLoadingAgents,
+            errorMessage: viewModel.errorMessage,
+            emptyMessage: emptyStateMessage
+        ) {
+            await viewModel.refreshAgents()
+        }
+
+        return NavigationStack {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 16) {
                     header
@@ -46,46 +82,6 @@ struct HomeView: View {
             .navigationDestination(for: Agent.self) { agent in
                 ConversationView(agent: agent, apiClient: viewModel.apiClient)
             }
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            RepoPickerView(
-                repositories: viewModel.sortedRepositories,
-                selectedRepository: $viewModel.selectedRepository,
-                isLoading: viewModel.isLoadingRepos
-            )
-            Spacer()
-            UserAvatarView(
-                userEmail: userInfo?.userEmail,
-                userName: userInfo?.apiKeyName,
-                onLogout: onLogout
-            )
-        }
-    }
-
-    private var searchBar: some View {
-        TextField("Search agents...", text: $viewModel.searchQuery)
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Theme.bgCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Theme.borderSecondary, lineWidth: 1)
-            )
-            .foregroundStyle(Theme.textPrimary)
-    }
-
-    private var content: some View {
-        AgentListView(
-            groupedAgents: viewModel.groupedAgents,
-            isLoading: viewModel.isLoadingAgents,
-            errorMessage: viewModel.errorMessage,
-            emptyMessage: emptyStateMessage
-        ) {
-            await viewModel.refreshAgents()
         }
     }
 
