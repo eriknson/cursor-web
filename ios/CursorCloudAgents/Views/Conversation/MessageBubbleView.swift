@@ -20,6 +20,7 @@ struct MessageBubbleView: View {
                 .font(.subheadline)
                 .foregroundStyle(message.type == .userMessage ? Theme.textPrimary : Theme.textSecondary)
                 .textSelection(.enabled)
+                .accessibilityLabel(message.type == .userMessage ? "You said: \(message.text)" : "Cursor said: \(message.text)")
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(message.type == .userMessage ? Theme.bgTertiary : Theme.bgQuaternary)
