@@ -109,14 +109,13 @@ struct ConversationView: View {
                 ComposerView(
                     placeholder: "Add a task for Cursor to do",
                     isLoading: viewModel.isSendingFollowUp,
-                    disabled: viewModel.agent == nil || viewModel.agent?.status.isTerminal == true
+                    disabled: viewModel.agent == nil
                 ) { text, _ in
                     Task { await viewModel.sendFollowUp(text) }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .safeAreaPadding(.bottom)
-                .opacity(viewModel.agent?.status.isTerminal == true ? 0.5 : 1)
             }
         }
         .background(Theme.bgMain)
