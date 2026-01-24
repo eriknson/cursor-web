@@ -43,6 +43,7 @@ struct RepoPickerView: View {
                             }
                         }
                     }
+                    .listRowBackground(Theme.bgMain)
 
                     Section {
                         ForEach(repositories) { repo in
@@ -71,6 +72,7 @@ struct RepoPickerView: View {
                                     }
                                 }
                             }
+                            .listRowBackground(Theme.bgMain)
                         }
                     } header: {
                         Text("Repositories")
@@ -81,6 +83,7 @@ struct RepoPickerView: View {
                 .background(Theme.bgMain)
                 .navigationTitle("Select Repository")
                 .navigationBarTitleDisplayMode(.inline)
+                .listStyle(.insetGrouped)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Close") { isPresented = false }
