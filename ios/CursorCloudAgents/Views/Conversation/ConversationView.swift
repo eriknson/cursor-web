@@ -28,6 +28,13 @@ struct ConversationView: View {
                                 ErrorView(message: errorMessage)
                             }
 
+                            if let promptText = initialPromptText {
+                                MessageBubbleView(
+                                    message: Message(id: "prompt-\(promptText)", type: .userMessage, text: promptText),
+                                    maxWidth: bubbleWidth
+                                )
+                            }
+
                             ForEach(viewModel.messages) { message in
                                 MessageBubbleView(message: message, maxWidth: bubbleWidth)
                             }
@@ -125,6 +132,12 @@ struct ConversationView: View {
             return "Setting up agent"
         }
         return "Working"
+    }
+
+    private var initialPromptText: String? {
+        guard !viewModel.messages.contains(where: { $0.type == .userMessage }) else { return nil }
+        let name = viewModel.agent?.name ?? agent.name
+        return name.isEmpty ? nil : name
     }
 
     private var showSummary: Bool {
