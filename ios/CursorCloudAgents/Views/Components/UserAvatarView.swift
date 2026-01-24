@@ -14,15 +14,13 @@ struct UserAvatarView: View {
 
     var body: some View {
         Menu {
-            VStack(alignment: .leading, spacing: 6) {
-                if let userName {
-                    Text(userName)
-                        .font(.subheadline.weight(.semibold))
-                }
-                Text(userEmail ?? "Not signed in")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textTertiary)
+            if let userName {
+                Text(userName)
+                    .font(.subheadline.weight(.semibold))
             }
+            Text(userEmail ?? "Not signed in")
+                .font(.footnote)
+                .foregroundStyle(Theme.textTertiary)
 
             Divider()
 
