@@ -43,6 +43,7 @@ struct HomeView: View {
                     .stroke(Theme.borderSecondary, lineWidth: 1)
             )
             .foregroundStyle(Theme.textPrimary)
+            .submitLabel(.search)
 
         let content = AgentListView(
             groupedAgents: viewModel.groupedAgents,

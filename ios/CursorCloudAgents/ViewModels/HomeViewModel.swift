@@ -7,7 +7,13 @@ final class HomeViewModel {
     var agents: [Agent] = []
     var repositories: [Repository] = []
     var selectedRepository: Repository?
-    var searchQuery: String = ""
+    var searchQuery: String = "" {
+        didSet {
+            if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                errorMessage = nil
+            }
+        }
+    }
     var isLoadingAgents: Bool = false
     var isLoadingRepos: Bool = false
     var isLaunchingAgent: Bool = false
