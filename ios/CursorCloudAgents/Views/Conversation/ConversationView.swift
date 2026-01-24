@@ -15,62 +15,69 @@ struct ConversationView: View {
     var body: some View {
         @Bindable var viewModel = viewModel
 
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if let errorMessage = viewModel.errorMessage {
-                            ErrorView(message: errorMessage)
-                        }
+        GeometryReader { proxy in
+            let bubbleWidth = proxy.size.width * 0.7
 
-                        ForEach(viewModel.messages) { message in
-                            MessageBubbleView(message: message)
-                        }
+            VStack(spacing: 0) {
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            if let errorMessage = viewModel.errorMessage {
+                                ErrorView(message: errorMessage)
+                            }
 
-                        if let pending = viewModel.pendingFollowUp {
-                            MessageBubbleView(message: Message(id: "pending-\(pending)", type: .userMessage, text: pending))
-                        }
+                            ForEach(viewModel.messages) { message in
+                                MessageBubbleView(message: message, maxWidth: bubbleWidth)
+                            }
 
-                        if shouldShowThinking {
-                            ThinkingIndicatorView(text: statusMessage)
-                        }
+                            if let pending = viewModel.pendingFollowUp {
+                                MessageBubbleView(
+                                    message: Message(id: "pending-\(pending)", type: .userMessage, text: pending),
+                                    maxWidth: bubbleWidth
+                                )
+                            }
 
-                        if showSummary, let summary = viewModel.agent?.summary {
-                            summaryView(summary)
-                        }
+                            if shouldShowThinking {
+                                ThinkingIndicatorView(text: statusMessage, maxWidth: bubbleWidth)
+                            }
 
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottom")
+                            if showSummary, let summary = viewModel.agent?.summary {
+                                summaryView(summary, maxWidth: bubbleWidth)
+                            }
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottom")
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: viewModel.messages.count) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: viewModel.messages.count) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            scrollProxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: viewModel.pendingFollowUp) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            scrollProxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                    .onAppear {
+                        scrollProxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
-                .onChange(of: viewModel.pendingFollowUp) { _, _ in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
+
+                ComposerView(
+                    placeholder: "Add a task for Cursor to do",
+                    isLoading: viewModel.isSendingFollowUp,
+                    disabled: viewModel.agent == nil
+                ) { text, _ in
+                    Task { await viewModel.sendFollowUp(text) }
                 }
-                .onAppear {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-
-            ComposerView(
-                placeholder: "Add a task for Cursor to do",
-                isLoading: viewModel.isSendingFollowUp,
-                disabled: viewModel.agent == nil
-            ) { text, _ in
-                Task { await viewModel.sendFollowUp(text) }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
         }
         .background(Theme.bgMain)
         .navigationTitle(viewModel.agent?.name ?? agent.name)
@@ -101,7 +108,7 @@ struct ConversationView: View {
         viewModel.agent?.status.isTerminal == true && viewModel.agent?.summary != nil
     }
 
-    private func summaryView(_ summary: String) -> some View {
+    private func summaryView(_ summary: String, maxWidth: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
                 .fill(Theme.bgTertiary)
@@ -120,6 +127,7 @@ struct ConversationView: View {
                 .padding(.vertical, 10)
                 .background(Theme.bgQuaternary)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
+                .frame(maxWidth: maxWidth, alignment: .leading)
 
             Spacer()
         }

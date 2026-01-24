@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ThinkingIndicatorView: View {
     let text: String
+    let maxWidth: CGFloat
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -23,6 +24,7 @@ struct ThinkingIndicatorView: View {
                 .padding(.vertical, 10)
                 .background(Theme.bgQuaternary)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
+                .frame(maxWidth: maxWidth, alignment: .leading)
 
             Spacer()
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     let message: Message
+    let maxWidth: CGFloat
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -19,7 +20,7 @@ struct MessageBubbleView: View {
                 .background(message.type == .userMessage ? Theme.bgTertiary : Theme.bgQuaternary)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: UIScreen.main.bounds.width * 0.7, alignment: message.type == .userMessage ? .trailing : .leading)
+                .frame(maxWidth: maxWidth, alignment: message.type == .userMessage ? .trailing : .leading)
 
             if message.type == .assistantMessage {
                 Spacer()
