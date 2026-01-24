@@ -100,7 +100,9 @@ final class HomeViewModel {
     }
 
     func refreshAgents() async {
-        await fetchAgents()
+        async let repositoriesTask = fetchRepositories()
+        async let agentsTask = fetchAgents()
+        _ = await (repositoriesTask, agentsTask)
         selectDefaultRepositoryIfNeeded()
     }
 
