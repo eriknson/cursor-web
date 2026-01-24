@@ -73,8 +73,9 @@ final class HomeViewModel {
     }
 
     func loadInitialData() async {
-        await fetchRepositories()
-        await fetchAgents()
+        async let repositoriesTask = fetchRepositories()
+        async let agentsTask = fetchAgents()
+        _ = await (repositoriesTask, agentsTask)
     }
 
     func refreshAgents() async {
