@@ -35,4 +35,4 @@ Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your
 
 ## Native iOS App
 
-The repository also includes a SwiftUI-based iOS client under `ios/`. See `ios/README.md` for setup and mock API instructions.
+The repository also includes a SwiftUI-based iOS client under `ios/`. See `ios/README.md` for app overview and mock API instructions, and `ios/GETTING_STARTED.md` for step-by-step device/simulator setup.

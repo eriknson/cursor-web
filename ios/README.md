@@ -6,6 +6,8 @@ Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors t
 - Xcode 15+
 - iOS 17+ simulator or device
 
+For full device, simulator, and Mac setup instructions, see [GETTING_STARTED.md](GETTING_STARTED.md).
+
 ## Quick Feature Tour
 - Log in using your Cursor API key (stored securely in Keychain).
 - Browse recent agent runs grouped by date and filtered by repository.
@@ -16,9 +18,10 @@ Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors t
 1. Open `ios/CursorCloudAgents.xcodeproj` in Xcode.
 2. Set the environment variable `USE_MOCK_API=1` on the scheme.
 3. Build and run on a simulator.
+4. Enter any non-empty key (for example, `mock-key`) on the login screen.
 
 ## Running (Live API)
-1. Remove `USE_MOCK_API` from the scheme environment.
+1. Remove `USE_MOCK_API` from the scheme environment (or set it to `0`).
 2. Build and run.
 3. Enter your Cursor API key on the login screen.
 

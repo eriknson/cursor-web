@@ -142,20 +142,17 @@ Simulators are the easiest way to test without a physical device:
 
 ---
 
-## Using Mock Mode (No API Key Needed)
+## Using Mock Mode (No Real API Key Needed)
 
 To test the app without a real Cursor API key:
 
-1. Open `ios/CursorCloudAgents/App/ContentView.swift`
-2. Find this line:
-   ```swift
-   let apiClient = CursorAPIClient.shared
-   ```
-3. Change it to:
-   ```swift
-   let apiClient = MockCursorAPIClient()
-   ```
+1. In Xcode, go to **Product → Scheme → Edit Scheme...**
+2. Select **Run** → **Arguments** tab
+3. Under **Environment Variables**, add:
+   - **Name**: `USE_MOCK_API`
+   - **Value**: `1`
 4. Build and run
+5. On the login screen, enter any non-empty key (e.g., `mock-key`)
 
 Mock mode provides:
 - Sample agents in various states
@@ -167,7 +164,7 @@ Mock mode provides:
 
 ## Using Live Mode (Real API)
 
-1. Ensure `ContentView.swift` uses `CursorAPIClient.shared`
+1. Remove the `USE_MOCK_API` environment variable (or set it to `0`)
 2. Build and run the app
 3. On the login screen, enter your Cursor API key
 4. Tap **Continue**
@@ -223,8 +220,8 @@ On your iPhone:
 ```
 ios/CursorCloudAgents/
 ├── App/
-│   ├── CursorCloudAgentsApp.swift  ← App entry point
-│   └── ContentView.swift           ← Switch mock/live here
+│   ├── CursorCloudAgentsApp.swift  ← App entry point + mock/live toggle
+│   └── ContentView.swift           ← Root view routing
 ├── Views/
 │   ├── Auth/LoginView.swift        ← Login screen
 │   ├── Home/HomeView.swift         ← Main agent list
