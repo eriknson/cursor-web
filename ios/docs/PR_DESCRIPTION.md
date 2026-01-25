@@ -135,7 +135,7 @@ ios/
 ## 🚀 Getting Started
 
 ### Requirements
-- macOS with Xcode 15+
+- macOS 13.5+ (Ventura) with Xcode 15+
 - iOS 17.0+ deployment target
 
 ### Setup

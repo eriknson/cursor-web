@@ -3,7 +3,7 @@
 Native SwiftUI client for the Cursor Cloud Agents experience. This app mirrors the web UX with API-key authentication, repository selection, agent history, and conversational follow-ups.
 
 ## Requirements
-- Xcode 15+
+- macOS 13.5+ (Ventura) with Xcode 15+
 - iOS 17+ simulator or device
 
 For full device, simulator, and Mac setup instructions, see [GETTING_STARTED.md](GETTING_STARTED.md).
