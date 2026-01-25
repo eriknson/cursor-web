@@ -142,6 +142,39 @@ Simulators are the easiest way to test without a physical device:
 
 ---
 
+## Recording a Demo Video
+
+You can capture a screen recording to include in a PR or share with teammates.
+
+### Record from the iOS Simulator
+
+1. Build and run the app in the simulator
+2. In the simulator menu bar, choose **File → Record Screen**
+3. Interact with the app to show the main flows (login, home, conversation, composer)
+4. Click the **Stop** button in the menu bar to finish
+5. Save the `.mov` file when prompted
+
+### Record from a Physical iPhone
+
+**Option A: QuickTime (recommended for longer demos)**
+
+1. Connect your iPhone via USB/USB‑C
+2. Open **QuickTime Player**
+3. Choose **File → New Movie Recording**
+4. Click the ▼ next to the record button and select your iPhone as the camera
+5. Press **Record** and walk through the app
+6. Stop recording and save the `.mov` file
+
+**Option B: iOS Screen Recording**
+
+1. Open **Control Center** on your iPhone
+2. Long‑press the **Screen Recording** button
+3. Tap **Start Recording**
+4. Record your walkthrough
+5. Stop recording and find the video in Photos
+
+---
+
 ## Using Mock Mode (No Real API Key Needed)
 
 To test the app without a real Cursor API key:
