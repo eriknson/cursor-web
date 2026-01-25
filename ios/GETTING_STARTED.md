@@ -6,7 +6,7 @@ This guide walks you through running the app on your iPhone or Mac.
 
 ## Prerequisites
 
-- **macOS** Ventura 14.0 or later
+- **macOS** 13.5+ (Ventura) or later
 - **Xcode 15** or later ([Download from Mac App Store](https://apps.apple.com/app/xcode/id497799835))
 - **Apple ID** (free account works for personal device testing)
 - **Cursor API Key** ([Get one here](https://cursor.com/dashboard))
