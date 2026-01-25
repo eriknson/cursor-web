@@ -1,0 +1,51 @@
+import SwiftUI
+
+struct UserAvatarView: View {
+    let userEmail: String?
+    let userName: String?
+    let onLogout: () -> Void
+
+    @Environment(\.openURL) private var openURL
+
+    private var avatarLetter: String {
+        guard let email = userEmail, let first = email.first else { return "?" }
+        return String(first).uppercased()
+    }
+
+    var body: some View {
+        Menu {
+            if let userName {
+                Text(userName)
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text(userEmail ?? "Not signed in")
+                .font(.footnote)
+                .foregroundStyle(Theme.textTertiary)
+                .accessibilityLabel(userEmail ?? "Not signed in")
+
+            Divider()
+
+            Button("Go to Dashboard") {
+                openURL(URL(string: "https://cursor.com/dashboard")!)
+            }
+            .accessibilityHint("Opens the Cursor dashboard in Safari")
+
+            Button(role: .destructive, action: onLogout) {
+                Text("Sign out")
+            }
+            .accessibilityHint("Signs out of your account")
+        } label: {
+            Circle()
+                .fill(Theme.bgTertiary)
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Text(avatarLetter)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                )
+                .accessibilityLabel("Account menu")
+                .accessibilityHint("Opens account actions")
+        }
+        .tint(Theme.textSecondary)
+    }
+}

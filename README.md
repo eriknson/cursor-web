@@ -32,3 +32,7 @@ Get your API key from [cursor.com/dashboard](https://cursor.com/dashboard). Your
 | Variable | Description |
 |----------|-------------|
 | `NEXT_PUBLIC_VERCEL_PROTECTION_BYPASS_SECRET` | Bypass secret for protected Vercel preview deployments. Get it from Vercel Dashboard → Settings → Deployment Protection → Protection Bypass for Automation. |
+
+## Native iOS App
+
+The repository also includes a SwiftUI-based iOS client under `ios/`. See `ios/README.md` for app overview and mock API instructions, and `ios/GETTING_STARTED.md` for step-by-step device/simulator setup.
