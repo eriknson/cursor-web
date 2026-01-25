@@ -31,3 +31,4 @@ For full device, simulator, and Mac setup instructions, see [GETTING_STARTED.md]
 - If you see empty conversations for new agents, wait a moment—the API may not have created the conversation yet.
 - Use the shared scheme in `ios/CursorCloudAgents.xcodeproj` for a preconfigured launch target.
 - When using All Repositories, select a specific repo before launching a new agent.
+- For demo recordings, see **Recording a Demo Video** in `GETTING_STARTED.md`.
