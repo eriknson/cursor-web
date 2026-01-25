@@ -147,6 +147,8 @@ Simulators are the easiest way to test without a physical device:
 - **Home**: ⌘⇧H
 - **Screenshot**: ⌘S
 
+If you don't see an iOS 17 simulator, install it via **Xcode → Settings → Platforms**.
+
 ---
 
 ## Recording a Demo Video
