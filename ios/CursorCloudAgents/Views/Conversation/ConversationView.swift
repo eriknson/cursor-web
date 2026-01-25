@@ -50,6 +50,7 @@ struct ConversationView: View {
                                     .font(.footnote)
                                     .foregroundStyle(Theme.textQuaternary)
                                     .padding(.horizontal, 4)
+                                    .accessibilityLabel("No messages yet")
                             }
 
                             let lastAssistantId = viewModel.messages.last(where: { $0.type == .assistantMessage })?.id
