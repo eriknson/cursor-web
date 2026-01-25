@@ -226,6 +226,14 @@ Since this environment lacks Xcode/iOS Simulator, testing requires:
 3. Run on simulator or device
 4. Use mock mode for development testing
 
+## 🎥 Recording a Demo
+
+To capture a screen recording for the PR:
+- **Simulator**: File → Record Screen → Stop → Save `.mov`
+- **iPhone**: Use QuickTime or the iOS Screen Recording feature
+
+Full walkthrough steps are in `ios/GETTING_STARTED.md`.
+
 ---
 
 ## 📄 Files Changed
