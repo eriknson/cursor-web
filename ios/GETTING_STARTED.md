@@ -45,6 +45,14 @@ Or manually:
 6. If you see a signing error, update the **Bundle Identifier** to a unique value
    - Example: `com.yourname.CursorCloudAgents`
 
+### Optional: Use the Shared Scheme
+
+We include a shared Xcode scheme for convenience:
+
+1. In Xcode, choose **Product → Scheme → Manage Schemes...**
+2. Confirm **CursorCloudAgents** is visible and shared
+3. Select it from the scheme dropdown before running
+
 ### 4. Select Your Device
 
 In Xcode's toolbar, click the device dropdown and choose:
