@@ -123,7 +123,8 @@ ios/
 │       ├── DateFormatters.swift           # Relative time formatting
 │       └── Extensions.swift               # Color hex parsing
 ├── CursorCloudAgents.xcodeproj/           # Xcode project files
-├── README.md                              # Setup instructions
+├── README.md                              # Setup overview
+├── GETTING_STARTED.md                     # Device/simulator setup
 └── docs/
     ├── mockups/                           # UI mockup images
     └── PR_DESCRIPTION.md                  # This file
@@ -142,6 +143,7 @@ ios/
 2. Open `ios/CursorCloudAgents.xcodeproj` in Xcode
 3. Select your target device or simulator
 4. Build and run (⌘R)
+5. For full device and simulator instructions, see `ios/GETTING_STARTED.md`
 
 ### Mock Mode
 The app includes a `MockCursorAPIClient` that provides:
@@ -150,13 +152,7 @@ The app includes a `MockCursorAPIClient` that provides:
 - Simulated conversations
 - Realistic network delays
 
-To use mock mode, edit `ContentView.swift`:
-```swift
-// Change:
-let apiClient = CursorAPIClient.shared
-// To:
-let apiClient = MockCursorAPIClient()
-```
+To use mock mode, set `USE_MOCK_API=1` in the Xcode scheme and launch the app. On the login screen, enter any non-empty key (for example, `mock-key`).
 
 ---
 
