@@ -51,7 +51,7 @@ In Xcode's toolbar, click the device dropdown and choose:
 - Or any iPhone simulator (e.g., "iPhone 15 Pro")
 
 **For Mac:**
-- "My Mac (Designed for iPhone)" - runs the iPhone app on your Mac
+- "My Mac (Designed for iPhone)" - runs the iPhone app on your Mac (Apple Silicon only)
 
 ### 5. Build and Run
 
@@ -106,6 +106,8 @@ This runs the iPhone app directly on your Mac:
 1. In device dropdown, select **"My Mac (Designed for iPhone)"**
 2. Press ⌘R to build and run
 3. The app opens in an iPhone-sized window
+
+> Requires an Apple Silicon Mac. If you’re on Intel, use Mac Catalyst instead.
 
 ### Option 2: Mac Catalyst (If Enabled)
 
