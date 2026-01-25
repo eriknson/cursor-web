@@ -41,6 +41,8 @@ Or manually:
 4. Check **Automatically manage signing**
 5. Select your **Team** (your Apple ID)
    - If you don't see a team, click "Add Account..." and sign in with your Apple ID
+6. If you see a signing error, update the **Bundle Identifier** to a unique value
+   - Example: `com.yourname.CursorCloudAgents`
 
 ### 4. Select Your Device
 
