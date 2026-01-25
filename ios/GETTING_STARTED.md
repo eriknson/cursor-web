@@ -88,6 +88,8 @@ The first time you run the app:
 4. Tap **Trust "[Your Apple ID]"**
 5. Run the app again from Xcode (⌘R)
 
+> Note: Free Apple ID provisioning profiles expire after 7 days. If the app stops launching, run it again from Xcode to refresh the profile.
+
 ### Wireless Debugging (Optional)
 
 After initial USB setup:
