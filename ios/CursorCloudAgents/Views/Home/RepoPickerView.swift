@@ -53,6 +53,7 @@ struct RepoPickerView: View {
                         }
                         .listRowBackground(Theme.bgMain)
                         .accessibilityLabel("All Repositories")
+                        .accessibilityHint("Shows agent runs across all repositories")
                     }
 
                     Section {
@@ -64,6 +65,7 @@ struct RepoPickerView: View {
                         }
 
                         ForEach(repositories) { repo in
+                            let relativeTime = repo.pushedAt.map { DateFormatters.relativeTime(from: $0) }
                             Button {
                                 selectedRepository = repo
                                 isPresented = false
@@ -92,6 +94,7 @@ struct RepoPickerView: View {
                             }
                             .listRowBackground(Theme.bgMain)
                             .accessibilityLabel("\(repo.owner)/\(repo.name)")
+                            .accessibilityHint(relativeTime.map { "Last pushed \($0)" } ?? "Repository")
                         }
                     } header: {
                         Text("Repositories")
